@@ -9,6 +9,7 @@ struct test
     test_func *function;
   };
 
+#ifndef THREADS
 static const struct test tests[] = 
   {
     {"alarm-single",       test_alarm_single},
@@ -17,8 +18,43 @@ static const struct test tests[] =
     {"alarm-no-busy-wait", test_alarm_no_busy_wait},
     {"alarm-one",          test_alarm_one},
     {"alarm-zero",         test_alarm_zero},
-    {"alarm-negative",     test_alarm_negative},
+    {"alarm-negative",     test_alarm_negative}
   };
+#else
+static const struct test tests[] = 
+  {
+    {"alarm-single",       test_alarm_single},
+    {"alarm-multiple",     test_alarm_multiple},
+    {"alarm-simultaneous", test_alarm_simultaneous},
+    {"alarm-no-busy-wait", test_alarm_no_busy_wait},
+    {"alarm-one",          test_alarm_one},
+    {"alarm-zero",         test_alarm_zero},
+    {"alarm-negative",     test_alarm_negative},      
+    {"alarm-priority", test_alarm_priority},
+    {"priority-change", test_priority_change},
+    {"priority-donate-one", test_priority_donate_one},
+    {"priority-donate-multiple", test_priority_donate_multiple},
+    {"priority-donate-multiple2", test_priority_donate_multiple2},
+    {"priority-donate-nest", test_priority_donate_nest},
+    {"priority-donate-sema", test_priority_donate_sema},
+    {"priority-donate-lower", test_priority_donate_lower},
+    {"priority-donate-chain", test_priority_donate_chain},
+    {"priority-preservation", test_priority_preservation},
+    {"priority-fifo", test_priority_fifo},
+    {"priority-preempt", test_priority_preempt},
+    {"priority-sema", test_priority_sema},
+    {"priority-condvar", test_priority_condvar},
+    {"mlfqs-load-1", test_mlfqs_load_1},
+    {"mlfqs-load-60", test_mlfqs_load_60},
+    {"mlfqs-load-avg", test_mlfqs_load_avg},
+    {"mlfqs-recent-1", test_mlfqs_recent_1},
+    {"mlfqs-fair-2", test_mlfqs_fair_2},
+    {"mlfqs-fair-20", test_mlfqs_fair_20},
+    {"mlfqs-nice-2", test_mlfqs_nice_2},
+    {"mlfqs-nice-10", test_mlfqs_nice_10},
+    {"mlfqs-block", test_mlfqs_block},
+  };  
+#endif
 
 static const char *test_name;
 
@@ -79,4 +115,3 @@ pass (void)
 {
   printf ("(%s) PASS\n", test_name);
 }
-
