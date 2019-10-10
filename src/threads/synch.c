@@ -196,7 +196,26 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  // sema_down (&lock->semaphore);
+  while (!sema_try_down(&lock->semaphore))
+  {
+    // Donate priority
+    // If not in waiting list, add to waiting list
+    // thread_block()
+
+    thread_donate_priority(lock->holder);
+    struct list_elem *elem = &thread_current()->elem;
+    enum intr_level old_level = intr_disable();
+    if (!(elem != NULL && elem->prev != NULL && elem->next != NULL))
+    {
+      list_insert_ordered(&lock->semaphore.waiters,
+                          &thread_current()->elem,
+                          &comp_priority,
+                          NULL);
+    }
+    thread_block();
+    intr_set_level(old_level);
+  }
   lock->holder = thread_current ();
 }
 
@@ -231,6 +250,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  thread_set_priority(thread_current()->priority);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

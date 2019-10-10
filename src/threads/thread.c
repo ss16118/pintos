@@ -215,8 +215,20 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  thread_yield();
 
   return tid;
+}
+
+/* Compares the thread effective priority of two list elements. For use in
+   priority scheduling */
+bool comp_priority(const struct list_elem *a,
+                  const struct list_elem *b,
+                  void *aux UNUSED)
+{
+  struct thread *threadA = list_entry(a, struct thread, elem);
+  struct thread *threadB = list_entry(b, struct thread, elem);
+  return threadA->effective_priority > threadB->effective_priority;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -252,7 +264,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, &comp_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -322,8 +334,8 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread)
+    list_insert_ordered(&ready_list, &cur->elem, &comp_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -350,14 +362,26 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current ()->effective_priority = new_priority;
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current ()->effective_priority;
+}
+
+/* Donates current thread's effective priority to RECIPIENT */
+void thread_donate_priority(struct thread *recipient)
+{
+  if (recipient->effective_priority < thread_current()->effective_priority) {
+    enum intr_level old_level = intr_disable();
+    recipient->effective_priority = thread_current()->effective_priority;
+    thread_yield();
+    intr_set_level(old_level);
+  }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -477,6 +501,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->effective_priority = priority;
+  t->wake_time = -1;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
