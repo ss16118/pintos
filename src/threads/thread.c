@@ -379,7 +379,10 @@ void thread_donate_priority(struct thread *recipient)
   if (recipient->effective_priority < thread_current()->effective_priority) {
     enum intr_level old_level = intr_disable();
     recipient->effective_priority = thread_current()->effective_priority;
-    thread_yield();
+    if (recipient->dependent != NULL)
+    {
+      thread_donate_priority(recipient->dependent);
+    }
     intr_set_level(old_level);
   }
 }
@@ -503,6 +506,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->effective_priority = priority;
   t->wake_time = -1;
+  t->dependent = NULL;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
