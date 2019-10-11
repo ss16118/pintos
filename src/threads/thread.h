@@ -95,8 +95,12 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct thread *dependent_on;           /* Pointer of thread this thread
                                            is dependent on */
+<<<<<<< HEAD
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
+=======
+    int nice;                           /* nice value of the thread*/
+>>>>>>> 468b325cda65bae44574fb656bb776bb76e62104
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -157,5 +161,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+int calculate_priority(int recent_cpu, int nice);
 
 #endif /* threads/thread.h */

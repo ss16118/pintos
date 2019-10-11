@@ -11,8 +11,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
+
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -424,17 +427,17 @@ void thread_donate_priority(struct thread *recipient)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  struct thread* cur = thread_current();
+  cur->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -622,6 +625,16 @@ thread_schedule_tail (struct thread *prev)
       palloc_free_page (prev);
     }
 }
+
+int calculate_priority(int recent_cpu, int nice){
+  int priority = PRI_MAX;
+  priority -= (nice*2);
+  int64_t priority_fixed_point = int_to_fixed_point(priority);
+  priority_fixed_point = subtract(priority,divide_int(int_to_fixed_point(recent_cpu),4));
+  priority = convert_to_int_round_to_nearest(priority_fixed_point);
+  return priority;
+}
+
 
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
