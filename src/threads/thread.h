@@ -95,12 +95,10 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct thread *dependent_on;           /* Pointer of thread this thread
                                            is dependent on */
-<<<<<<< HEAD
+
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
-=======
-    int nice;                           /* nice value of the thread*/
->>>>>>> 468b325cda65bae44574fb656bb776bb76e62104
+    int nice;                           /* Nice value of the thread*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
