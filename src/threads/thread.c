@@ -362,7 +362,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->effective_priority = new_priority;
+  thread_current ()->priority = new_priority;
+  if (list_empty(&thread_current()->dependent_list) ||
+      new_priority > thread_current()->effective_priority)
+  {
+    thread_current()->effective_priority = new_priority;
+  }
   thread_yield();
 }
 
@@ -373,17 +378,47 @@ thread_get_priority (void)
   return thread_current ()->effective_priority;
 }
 
+/* Returns the highest priority out of the current thread's dependent threads */
+int thread_get_highest_priority(void)
+{
+  if (!list_empty(&thread_current()->dependent_list))
+  {
+    return list_entry(list_begin(&thread_current()->dependent_list),
+                                 struct thread,
+                                 dependent_elem)->effective_priority;
+  }
+  return thread_current()->priority;
+}
+
+void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
+{
+  if (!list_empty(waiting_list))
+  {
+    for (struct list_elem *waiter = list_begin(waiting_list);
+         waiter != list_end(waiting_list);
+         waiter = list_next(waiter))
+    {
+      struct thread *th = list_entry(waiter, struct thread, elem);
+      if (dep != th)
+      {
+        th->dependent_on = dep;
+        list_remove(&th->dependent_elem);
+        list_push_back(&dep->dependent_list,
+                       &th->dependent_elem);
+      }
+    }
+  }
+}
+
 /* Donates current thread's effective priority to RECIPIENT */
 void thread_donate_priority(struct thread *recipient)
 {
   if (recipient->effective_priority < thread_current()->effective_priority) {
-    enum intr_level old_level = intr_disable();
     recipient->effective_priority = thread_current()->effective_priority;
-    if (recipient->dependent != NULL)
+    if (recipient->dependent_on != NULL)
     {
-      thread_donate_priority(recipient->dependent);
+      thread_donate_priority(recipient->dependent_on);
     }
-    intr_set_level(old_level);
   }
 }
 
@@ -506,7 +541,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->effective_priority = priority;
   t->wake_time = -1;
-  t->dependent = NULL;
+  t->dependent_on = NULL;
+  list_init(&t->dependent_list);
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

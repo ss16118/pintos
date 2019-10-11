@@ -203,19 +203,23 @@ lock_acquire (struct lock *lock)
       // Donate priority
       // If not in waiting list, add to waiting list
       // thread_block()
-      thread_current()->dependent = lock->holder;
       enum intr_level old_level = intr_disable();
+      thread_current()->dependent_on = lock->holder;
+
       list_insert_ordered(&lock->semaphore.waiters,
                           &thread_current()->elem,
                           &comp_priority,
                           NULL);
+      list_insert_ordered(&lock->holder->dependent_list,
+                          &thread_current()->dependent_elem,
+                          &comp_priority,
+                          NULL);
 
-      thread_donate_priority(thread_current()->dependent);
-      // PANIC("p:%d\n", thread_current()->dependent->effective_priority);
+      thread_donate_priority(thread_current()->dependent_on);
       thread_block();
       intr_set_level(old_level);
     }
-    thread_current()->dependent = NULL;
+    thread_current()->dependent_on = NULL;
   }
   else
   {
@@ -254,10 +258,22 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  if (!thread_mlfqs && !list_empty(&lock->semaphore.waiters))
+  {
+    struct thread *dependent_thread = list_entry(list_begin(&lock->semaphore.waiters),
+                                  struct thread, elem);
+    enum intr_level old_level = intr_disable();
+    list_remove(&dependent_thread->dependent_elem);
+    thread_change_dependencies(&lock->semaphore.waiters, dependent_thread);
+    intr_set_level(old_level);
+    thread_current()->effective_priority = thread_get_highest_priority();
+  }
+
   
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  thread_set_priority(thread_current()->priority);
+  thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false
