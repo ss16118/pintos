@@ -4,7 +4,11 @@
 
 static int64_t f = 2 >> Q;
 
-int64_t to_fixed_point(float n){
+// int64_t float_to_fixed_point(float n){
+//     return (n * f);
+// }
+
+int64_t int_to_fixed_point(int n){
     return (n * f);
 }
 

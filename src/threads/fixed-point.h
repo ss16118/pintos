@@ -1,7 +1,9 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-int64_t to_fixed_point(float n);
+int64_t int_to_fixed_point(int n);
+
+// int64_t float_to_fixed_point(float n);
 
 int convert_to_int_round_towards_zero(int64_t x);
 
@@ -15,7 +17,7 @@ int64_t add_int(int64_t x, int n);
 
 int64_t subtract_int(int64_t x, int n);
 
-int64_t multiply(int64_t x, int64_t y):
+int64_t multiply(int64_t x, int64_t y);
 
 int64_t multiply_int(int64_t x, int n);
 

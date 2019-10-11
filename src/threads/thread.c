@@ -11,9 +11,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
-#include "thread/fixed-point.h"
+
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -587,6 +589,16 @@ thread_schedule_tail (struct thread *prev)
       palloc_free_page (prev);
     }
 }
+
+int calculate_priority(int recent_cpu, int nice){
+  int priority = PRI_MAX;
+  priority -= (nice*2);
+  int64_t priority_fixed_point = int_to_fixed_point(priority);
+  priority_fixed_point = subtract(priority,divide_int(int_to_fixed_point(recent_cpu),4));
+  priority = convert_to_int_round_to_nearest(priority_fixed_point);
+  return priority;
+}
+
 
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
