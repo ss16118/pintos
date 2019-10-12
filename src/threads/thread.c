@@ -53,7 +53,7 @@ static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
-static int64_t load_average;
+static int64_t load_average = 0;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -650,6 +650,9 @@ int64_t calculate_load_average(int64_t load_average, int ready_threads){
   return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
 }
 
+void update_load_average() {
+  int ready_threads = 0;
+}
 
 
 /* Schedules a new process.  At entry, interrupts must be off and
