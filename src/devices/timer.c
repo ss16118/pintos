@@ -232,8 +232,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
   timer_wake();
   thread_tick ();
 
-  if (thread_mlfqs && (ticks % 100 == 0)){
-    update_load_average();
+  if (thread_mlfqs){
+    thread_current()->recent_cpu += 1;
+    if (ticks % 100 == 0){
+      update_load_average();
+      update_recent_cpu();
+    }
   }
 }
 

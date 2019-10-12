@@ -553,7 +553,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->wake_time = -1;
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
-  t->magic = THREAD_MAGIC;
+  t->magic = THREAD_MAGIC; 
+  t->nice = 0;
+  t->recent_cpu = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -665,6 +667,17 @@ void update_load_average() {
 
   load_average = calculate_load_average(load_average, ready_threads);
   
+}
+
+void update_recent_cpu(){
+  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+    e = list_next (e)){
+      struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (is_thread(current_thread)){
+        current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
+          divide_int(int_to_fixed_point(thread_get_load_avg()), 100), current_thread->nice);
+      }
+    }
 }
 
 
