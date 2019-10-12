@@ -238,6 +238,9 @@ timer_interrupt (struct intr_frame *args UNUSED)
       update_load_average();
       update_recent_cpu();
     }
+    if (ticks % 4 == 0){
+      update_priority();
+    }
   }
 }
 

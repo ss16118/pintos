@@ -680,6 +680,15 @@ void update_recent_cpu(){
     }
 }
 
+void update_priority(){
+    for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+    e = list_next (e)){
+      struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (is_thread(current_thread)){
+        current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
+      }
+    }
+}
 
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
