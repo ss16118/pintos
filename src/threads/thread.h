@@ -99,6 +99,7 @@ struct thread
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
     int nice;                           /* Nice value of the thread*/
+    int64_t recent_cpu;                 /* recent_cpu value of the thread */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
