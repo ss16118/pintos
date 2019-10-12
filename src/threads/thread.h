@@ -160,6 +160,9 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-int calculate_priority(int recent_cpu, int nice);
+int calculate_priority(int64_t recent_cpu, int nice);
+int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice);
+int64_t calculate_load_average(int64_t load_average, int ready_threads);
+
 
 #endif /* threads/thread.h */

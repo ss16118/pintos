@@ -218,6 +218,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  if (thread_mlfqs) {
+    //implement later
+  }
+
   thread_yield();
 
   return tid;
@@ -626,14 +631,23 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
-int calculate_priority(int recent_cpu, int nice){
+int calculate_priority(int64_t recent_cpu, int nice){
   int priority = PRI_MAX;
   priority -= (nice*2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
-  priority_fixed_point = subtract(priority,divide_int(int_to_fixed_point(recent_cpu),4));
+  priority_fixed_point = subtract(priority,divide_int(recent_cpu,4));
   priority = convert_to_int_round_to_nearest(priority_fixed_point);
   return priority;
 }
+
+int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice) {
+  return add_int(multiply(divide(multiply_int(load_average,2), add_int(multiply_int(load_average,2), 1)), recent_cpu), nice);
+}
+
+int64_t calculate_load_average(int64_t load_average, int ready_threads){
+  return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
+}
+
 
 
 /* Schedules a new process.  At entry, interrupts must be off and
