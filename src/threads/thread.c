@@ -652,6 +652,19 @@ int64_t calculate_load_average(int64_t load_average, int ready_threads){
 
 void update_load_average() {
   int ready_threads = 0;
+  struct thread* current_thread;
+  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+      e = list_next (e)){
+    struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (current_thread->status == THREAD_RUNNING || current_thread->status == THREAD_READY){
+        if (current_thread != idle_thread) {
+          ready_threads += 1;
+        }
+      }
+  }
+
+  load_average = calculate_load_average(load_average, ready_threads);
+  
 }
 
 

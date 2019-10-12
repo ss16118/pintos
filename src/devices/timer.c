@@ -231,6 +231,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   timer_wake();
   thread_tick ();
+
+  if (thread_mlfqs && (ticks % 100 == 0)){
+    update_load_average();
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
