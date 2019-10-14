@@ -168,4 +168,6 @@ void update_load_average(void);
 void update_recent_cpu(void);
 void update_priority(void);
 
+void sort_based_on_priority(void);
+
 #endif /* threads/thread.h */

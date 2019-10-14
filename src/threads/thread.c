@@ -690,6 +690,10 @@ void update_priority(){
     }
 }
 
+void sort_based_on_priority(){
+  list_sort(&ready_list,comp_priority,NULL);
+}
+
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
    running to some other state.  This function finds another

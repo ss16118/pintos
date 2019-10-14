@@ -241,6 +241,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
     if (ticks % 4 == 0){
       update_priority();
     }
+    sort_based_on_priority();
   }
 }
 
