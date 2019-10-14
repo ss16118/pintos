@@ -676,27 +676,30 @@ void update_load_average() {
   for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
       e = list_next (e)){
     struct thread * current_thread = list_entry (e, struct thread, elem);
-      if (current_thread->status == THREAD_RUNNING ||
-          current_thread->status == THREAD_READY){
-        if (current_thread != idle_thread) {
-          ready_threads += 1;
-        }
+    if (current_thread->status == THREAD_RUNNING ||
+        current_thread->status == THREAD_READY)
+    {
+      if (current_thread != idle_thread)
+      {
+        ready_threads += 1;
       }
+    }
   }
 
   load_average = calculate_load_average(load_average, ready_threads);
-  
+  printf("load_average: %d\n", load_average);
 }
 
 void update_recent_cpu(){
   for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
-    e = list_next (e)){
-      struct thread * current_thread = list_entry (e, struct thread, elem);
-      if (is_thread(current_thread)){
-        current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
-          divide_int(int_to_fixed_point(thread_get_load_avg()), 100), current_thread->nice);
-      }
+    e = list_next (e))
+  {
+    struct thread * current_thread = list_entry (e, struct thread, elem);
+    if (is_thread(current_thread)){
+      current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
+        divide_int(int_to_fixed_point(thread_get_load_avg()), 100), current_thread->nice);
     }
+  }
 }
 
 void update_priority(){

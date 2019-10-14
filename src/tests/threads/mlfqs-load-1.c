@@ -37,8 +37,10 @@ test_mlfqs_load_1 (void)
               load_avg / 100, load_avg % 100, elapsed);
       else if (load_avg > 50)
         break;
-      else if (elapsed > 45)
+      else if (elapsed > 45){
+        PANIC ("%d",load_avg);
         fail ("load average stayed below 0.5 for more than 45 seconds");
+      }
     }
 
   if (elapsed < 38)
