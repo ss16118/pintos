@@ -218,7 +218,13 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  thread_yield();
+  if (t->effective_priority > thread_current()->effective_priority)
+  {
+    if (!thread_mlfqs)
+    { 
+      thread_yield();
+    }
+  }
 
   return tid;
 }
@@ -371,7 +377,16 @@ thread_set_priority (int new_priority)
   {
     thread_current()->effective_priority = new_priority;
   }
-  thread_yield();
+  else
+  {
+    thread_current()->effective_priority = thread_get_highest_priority();
+  }
+  if (list_entry(
+        list_begin(&ready_list), struct thread, elem)->effective_priority >
+      thread_current()->effective_priority)
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -393,10 +408,12 @@ int thread_get_highest_priority(void)
   return thread_current()->priority;
 }
 
+/* Sets all members of the waiting list to be dependent on DEP */
 void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
 {
   if (!list_empty(waiting_list))
   {
+    enum intr_level old_level = intr_disable();
     for (struct list_elem *waiter = list_begin(waiting_list);
          waiter != list_end(waiting_list);
          waiter = list_next(waiter))
@@ -410,10 +427,11 @@ void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
                        &th->dependent_elem);
       }
     }
+    intr_set_level(old_level);
   }
 }
 
-/* Donates current thread's effective priority to RECIPIENT */
+/* Recursively donates current thread's effective priority to RECIPIENT */
 void thread_donate_priority(struct thread *recipient)
 {
   if (recipient->effective_priority < thread_current()->effective_priority) {
