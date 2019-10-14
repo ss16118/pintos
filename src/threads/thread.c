@@ -53,6 +53,8 @@ static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
+static int64_t load_average = 0;
+
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
@@ -218,14 +220,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
   if (t->effective_priority > thread_current()->effective_priority)
   {
-    if (!thread_mlfqs)
-    {
       thread_yield();
-    }
   }
-
   return tid;
 }
 
@@ -469,7 +468,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return  convert_to_int_round_to_nearest(multiply_int(load_average, 100)) ;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -477,7 +476,7 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return convert_to_int_round_to_nearest(multiply_int(thread_current()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -570,7 +569,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->wake_time = -1;
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
-  t->magic = THREAD_MAGIC;
+  t->magic = THREAD_MAGIC; 
+  t->nice = 0;
+  t->recent_cpu = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -650,15 +651,64 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
-int calculate_priority(int recent_cpu, int nice){
+int calculate_priority(int64_t recent_cpu, int nice){
   int priority = PRI_MAX;
   priority -= (nice*2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
-  priority_fixed_point = subtract(priority,divide_int(int_to_fixed_point(recent_cpu),4));
+  priority_fixed_point = subtract(priority,divide_int(recent_cpu,4));
   priority = convert_to_int_round_to_nearest(priority_fixed_point);
   return priority;
 }
 
+int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice) {
+  return add_int(multiply(divide(multiply_int(load_average,2), add_int(multiply_int(load_average,2), 1)), recent_cpu), nice);
+}
+
+int64_t calculate_load_average(int64_t load_average, int ready_threads){
+  return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
+}
+
+void update_load_average() {
+  int ready_threads = 0;
+  struct thread* current_thread;
+  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+      e = list_next (e)){
+    struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (current_thread->status == THREAD_RUNNING || current_thread->status == THREAD_READY){
+        if (current_thread != idle_thread) {
+          ready_threads += 1;
+        }
+      }
+  }
+
+  load_average = calculate_load_average(load_average, ready_threads);
+  
+}
+
+void update_recent_cpu(){
+  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+    e = list_next (e)){
+      struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (is_thread(current_thread)){
+        current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
+          divide_int(int_to_fixed_point(thread_get_load_avg()), 100), current_thread->nice);
+      }
+    }
+}
+
+void update_priority(){
+    for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+    e = list_next (e)){
+      struct thread * current_thread = list_entry (e, struct thread, elem);
+      if (is_thread(current_thread)){
+        current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
+      }
+    }
+}
+
+void sort_based_on_priority(){
+  list_sort(&ready_list,comp_priority,NULL);
+}
 
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from

@@ -99,6 +99,7 @@ struct thread
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
     int nice;                           /* Nice value of the thread*/
+    int64_t recent_cpu;                 /* recent_cpu value of the thread */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -159,6 +160,13 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-int calculate_priority(int recent_cpu, int nice);
+int calculate_priority(int64_t recent_cpu, int nice);
+int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice);
+int64_t calculate_load_average(int64_t load_average, int ready_threads);
+void update_load_average(void);
+void update_recent_cpu(void);
+void update_priority(void);
+
+void sort_based_on_priority(void);
 
 #endif /* threads/thread.h */
