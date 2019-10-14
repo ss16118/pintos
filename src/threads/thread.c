@@ -382,9 +382,10 @@ thread_set_priority (int new_priority)
     {
       thread_current()->effective_priority = thread_get_highest_priority();
     }
-    if (list_entry(
-          list_begin(&ready_list), struct thread, elem)->effective_priority >
-        thread_current()->effective_priority)
+
+    // If the thread no longer has the highest priority, immediately yield CPU
+    if (list_entry(list_begin(&ready_list), struct thread, elem)->
+              effective_priority > thread_current()->effective_priority)
     {
       thread_yield();
     }
@@ -413,7 +414,9 @@ int thread_get_highest_priority(void)
   return thread_current()->priority;
 }
 
-/* Sets all members of the waiting list to be dependent on DEP */
+/* Sets all members of the waiting list to be dependent on DEP, used when
+   releasing locks to make all threads waiting on lock to be dependent on the
+   next owner of the lock */
 void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
 {
   if (!list_empty(waiting_list))
@@ -670,11 +673,11 @@ int64_t calculate_load_average(int64_t load_average, int ready_threads){
 
 void update_load_average() {
   int ready_threads = 0;
-  struct thread* current_thread;
   for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
       e = list_next (e)){
     struct thread * current_thread = list_entry (e, struct thread, elem);
-      if (current_thread->status == THREAD_RUNNING || current_thread->status == THREAD_READY){
+      if (current_thread->status == THREAD_RUNNING ||
+          current_thread->status == THREAD_READY){
         if (current_thread != idle_thread) {
           ready_threads += 1;
         }

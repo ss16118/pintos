@@ -217,9 +217,12 @@ lock_acquire (struct lock *lock)
   {
     while (!sema_try_down(&lock->semaphore))
     {
-      // Donate priority
-      // If not in waiting list, add to waiting list
-      // thread_block()
+      /* 1. Set dependency
+       * 2. Insert current thread into list of threads dependent on holder
+       * 3. Add current thread to waiting list of lock
+       * 4. Donate priority
+       * 5. Block current thread, wait until lock becomes available
+       */
       enum intr_level old_level = intr_disable();
       thread_current()->dependent_on = lock->holder;
 
@@ -278,13 +281,13 @@ lock_release (struct lock *lock)
 
   if (!thread_mlfqs && !list_empty(&lock->semaphore.waiters))
   {
+    enum intr_level old_level = intr_disable();
     struct thread *dependent_thread = list_entry(list_begin(&lock->semaphore.waiters),
                                   struct thread, elem);
-    enum intr_level old_level = intr_disable();
     list_remove(&dependent_thread->dependent_elem);
     thread_change_dependencies(&lock->semaphore.waiters, dependent_thread);
-    intr_set_level(old_level);
     thread_current()->effective_priority = thread_get_highest_priority();
+    intr_set_level(old_level);
   }
 
   lock->holder = NULL;
@@ -412,8 +415,5 @@ static bool comp_cond_priority (const struct list_elem *a,
     }
     return false;
   }
-  else
-  {
-    return true;
-  }
+  return true;
 }
