@@ -228,7 +228,6 @@ lock_acquire (struct lock *lock)
                           &comp_priority,
                           NULL);
 
-      // list_push_back (&lock->semaphore.waiters, &thread_current ()->elem);
       list_insert_ordered(&lock->semaphore.waiters,
                           &thread_current()->elem,
                           &comp_priority,
@@ -290,7 +289,6 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  // thread_yield();
 }
 
 /* Returns true if the current thread holds LOCK, false

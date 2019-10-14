@@ -106,7 +106,7 @@ thread_init (void)
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void
-thread_start (void) 
+thread_start (void)
 {
   /* Create the idle thread. */
   struct semaphore idle_started;
@@ -124,13 +124,13 @@ thread_start (void)
 size_t
 threads_ready (void)
 {
-  return list_size (&ready_list);      
+  return list_size (&ready_list);
 }
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
-thread_tick (void) 
+thread_tick (void)
 {
   struct thread *t = thread_current ();
 
@@ -151,7 +151,7 @@ thread_tick (void)
 
 /* Prints thread statistics. */
 void
-thread_print_stats (void) 
+thread_print_stats (void)
 {
   printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
           idle_ticks, kernel_ticks, user_ticks);
@@ -174,7 +174,7 @@ thread_print_stats (void)
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
 thread_create (const char *name, int priority,
-               thread_func *function, void *aux) 
+               thread_func *function, void *aux)
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -221,7 +221,7 @@ thread_create (const char *name, int priority,
   if (t->effective_priority > thread_current()->effective_priority)
   {
     if (!thread_mlfqs)
-    { 
+    {
       thread_yield();
     }
   }
@@ -247,7 +247,7 @@ bool comp_priority(const struct list_elem *a,
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
 void
-thread_block (void) 
+thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
@@ -372,20 +372,23 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
-  if (list_empty(&thread_current()->dependent_list) ||
-      new_priority > thread_current()->effective_priority)
+  if (!thread_mlfqs)
   {
-    thread_current()->effective_priority = new_priority;
-  }
-  else
-  {
-    thread_current()->effective_priority = thread_get_highest_priority();
-  }
-  if (list_entry(
-        list_begin(&ready_list), struct thread, elem)->effective_priority >
-      thread_current()->effective_priority)
-  {
-    thread_yield();
+    if (list_empty(&thread_current()->dependent_list) ||
+        new_priority > thread_current()->effective_priority)
+    {
+      thread_current()->effective_priority = new_priority;
+    }
+    else
+    {
+      thread_current()->effective_priority = thread_get_highest_priority();
+    }
+    if (list_entry(
+          list_begin(&ready_list), struct thread, elem)->effective_priority >
+        thread_current()->effective_priority)
+    {
+      thread_yield();
+    }
   }
 }
 
@@ -393,10 +396,13 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->effective_priority;
+  return (!thread_mlfqs) ?
+              thread_current()->effective_priority :
+              thread_current()->priority;
 }
 
-/* Returns the highest priority out of the current thread's dependent threads */
+/* Returns the highest priority out of the current thread's dependent threads,
+   not for use with mlfqs mode on*/
 int thread_get_highest_priority(void)
 {
   if (!list_empty(&thread_current()->dependent_list))
