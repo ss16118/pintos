@@ -456,7 +456,7 @@ void
 thread_set_nice (int nice) 
 { 
   struct thread* cur = thread_current();
-  assert(thread_mlfqs);
+  ASSERT(thread_mlfqs);
   cur->nice = nice;
   int priority = calculate_priority(cur->recent_cpu, nice);
   cur -> priority = priority;
