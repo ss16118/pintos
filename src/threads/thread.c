@@ -456,12 +456,11 @@ void
 thread_set_nice (int nice) 
 { 
   struct thread* cur = thread_current();
+  assert(thread_mlfqs);
   cur->nice = nice;
   int priority = calculate_priority(cur->recent_cpu, nice);
   cur -> priority = priority;
-  sort_based_on_priority();
-  struct thread* hightestThread = next_thread_to_run();
-  if (hightestThread->priority > priority) 
+  if (thread_get_highest_priority() > priority) 
   {
     thread_yield();
   }
@@ -478,7 +477,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
+
   return  convert_to_int_round_to_nearest(multiply_int(load_average, 100)) ;
 }
 
@@ -486,7 +485,7 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
+
   return convert_to_int_round_to_nearest(multiply_int(thread_current()->recent_cpu, 100));
 }
 
@@ -730,9 +729,7 @@ void update_priority(){
 }
 
 void sort_based_on_priority(){
-  enum intr_level prevLevel = intr_disable();
   list_sort(&ready_list,comp_priority,NULL);
-  intr_set_level(prevLevel);
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and
