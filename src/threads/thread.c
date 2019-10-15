@@ -471,9 +471,15 @@ void thread_donate_priority(struct thread *recipient)
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice) 
-{
+{ 
   struct thread* cur = thread_current();
   cur->nice = nice;
+  int priority = calculate_priority(cur->recent_cpu, nice);
+  cur -> priority = priority;
+  if (thread_get_highest_priority() > priority) 
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's nice value. */
@@ -487,7 +493,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
+
   return  convert_to_int_round_to_nearest(multiply_int(load_average, 100)) ;
 }
 
@@ -495,7 +501,7 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
+
   return convert_to_int_round_to_nearest(multiply_int(thread_current()->recent_cpu, 100));
 }
 
@@ -671,19 +677,27 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
+/* priority = PRI_MAX - (recent_cpu / 4) - (nice / 2) */
 int calculate_priority(int64_t recent_cpu, int nice){
   int priority = PRI_MAX;
   priority -= (nice*2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
   priority_fixed_point = subtract(priority_fixed_point,divide_int(recent_cpu,4));
   priority = convert_to_int_round_to_nearest(priority_fixed_point);
+  if (priority > PRI_MAX){
+    priority = PRI_MAX;
+  } else if (priority < PRI_MIN){
+    priority = PRI_MIN;
+  }
   return priority;
-}
+} 
 
+/* recent_cpu = (2 * load_avg)/ (2 * load_avg + 1) * recent_cpu + nice */
 int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice) {
   return add_int(multiply(divide(multiply_int(load_average,2), add_int(multiply_int(load_average,2), 1)), recent_cpu), nice);
 }
 
+/* load_avg = (59/60) * load_avg + (1 / 60) * ready_threads*/
 int64_t calculate_load_average(int64_t load_average, int ready_threads){
   return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
 }
@@ -696,21 +710,7 @@ void update_load_average() {
   if (thread_current() != idle_thread){
     ready_threads++;
   }
-  // for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
-  //     e = list_next (e)){
-  //   struct thread * current_thread = list_entry (e, struct thread, elem);
-  //   if (current_thread->status == THREAD_RUNNING ||
-  //       current_thread->status == THREAD_READY)
-  //   {
-  //     if (current_thread != idle_thread)
-  //     {
-  //       ready_threads += 1;
-  //     }
-  //   }
-  // }
-  //PANIC("no of threads %d",ready_threads);
   load_average = calculate_load_average(load_average, ready_threads);
-  //("load_average: %d\n", load_average);
 }
 
 void update_recent_cpu(){

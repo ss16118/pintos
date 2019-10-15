@@ -3,7 +3,7 @@
 
 #define Q 14
 
-static int64_t f = 2 << Q;
+static int64_t f = 1 << Q;
 
 // int64_t float_to_fixed_point(float n){
 //     return (n * f);
