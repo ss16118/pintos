@@ -149,6 +149,23 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+  
+  if (thread_mlfqs)
+  {
+    if (thread_current() != idle_thread)
+      thread_current()->recent_cpu += 1;
+    if (timer_ticks() % 100 == 0)
+    {
+      update_load_average();
+      update_recent_cpu();
+    }
+    if (timer_ticks() % 4 == 0)
+    {
+      update_priority();
+      sort_based_on_priority();
+    }
+  }
 }
 
 /* Prints thread statistics. */
@@ -668,7 +685,7 @@ int calculate_priority(int64_t recent_cpu, int nice){
   int priority = PRI_MAX;
   priority -= (nice*2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
-  priority_fixed_point = subtract(priority,divide_int(recent_cpu,4));
+  priority_fixed_point = subtract(priority_fixed_point,divide_int(recent_cpu,4));
   priority = convert_to_int_round_to_nearest(priority_fixed_point);
   if (priority > PRI_MAX){
     priority = PRI_MAX;
@@ -690,26 +707,17 @@ int64_t calculate_load_average(int64_t load_average, int ready_threads){
 
 void update_load_average() {
   int ready_threads = 0;
-  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
-      e = list_next (e)){
-    struct thread * current_thread = list_entry (e, struct thread, elem);
-    if (current_thread->status == THREAD_RUNNING ||
-        current_thread->status == THREAD_READY)
-    {
-      if (current_thread != idle_thread)
-      {
-        ready_threads += 1;
-      }
-    }
-  }
- // threads_ready() ??
 
+  ready_threads = list_size(&ready_list);
+
+  if (thread_current() != idle_thread){
+    ready_threads++;
+  }
   load_average = calculate_load_average(load_average, ready_threads);
-  printf("load_average: %d\n", load_average);
 }
 
 void update_recent_cpu(){
-  for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
+  for (struct list_elem* e = list_begin (&all_list); e != list_end (&all_list);
     e = list_next (e))
   {
     struct thread * current_thread = list_entry (e, struct thread, elem);
