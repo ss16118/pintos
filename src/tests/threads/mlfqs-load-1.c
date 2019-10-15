@@ -38,7 +38,6 @@ test_mlfqs_load_1 (void)
       else if (load_avg > 50)
         break;
       else if (elapsed > 45){
-        PANIC ("%d",load_avg);
         fail ("load average stayed below 0.5 for more than 45 seconds");
       }
     }
@@ -49,7 +48,7 @@ test_mlfqs_load_1 (void)
 
   msg ("sleeping for another 10 seconds, please wait...");
   timer_sleep (TIMER_FREQ * 10);
-
+  //PANIC("Time: %d", (int)(timer_elapsed (start_time) / TIMER_FREQ));
   load_avg = thread_get_load_avg ();
   if (load_avg < 0)
     fail ("load average fell below 0");
