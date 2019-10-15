@@ -153,17 +153,19 @@ thread_tick (void)
   
   if (thread_mlfqs)
   {
-    if (thread_current() != idle_thread)
-      thread_current()->recent_cpu += 1;
+    if (thread_current() != idle_thread){
+      thread_current()->recent_cpu++;
+    }
     if (timer_ticks() % 100 == 0)
-    {
+    {       
       update_load_average();
       update_recent_cpu();
     }
     if (timer_ticks() % 4 == 0)
     {
-      update_priority();
+      update_priority(); 
       sort_based_on_priority();
+      
     }
   }
 }
@@ -718,9 +720,9 @@ void update_recent_cpu(){
     e = list_next (e))
   {
     struct thread * current_thread = list_entry (e, struct thread, elem);
-    if (is_thread(current_thread)){
+    if (is_thread(current_thread) && current_thread != idle_thread){
       current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
-        divide_int(int_to_fixed_point(thread_get_load_avg()), 100), current_thread->nice);
+        int_to_fixed_point(load_average), current_thread->nice);
     }
   }
 }
