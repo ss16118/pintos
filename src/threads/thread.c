@@ -146,28 +146,28 @@ thread_tick (void)
   else
     kernel_ticks++;
 
-  /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
-
-  
   if (thread_mlfqs)
   {
     if (thread_current() != idle_thread){
-      thread_current()->recent_cpu++;
+      thread_current()->recent_cpu = add_int(thread_current()->recent_cpu, 1);
     }
     if (timer_ticks() % 100 == 0)
-    {       
+    {
       update_load_average();
       update_recent_cpu();
     }
     if (timer_ticks() % 4 == 0)
     {
-      update_priority(); 
+      update_priority();
       sort_based_on_priority();
-      
+
     }
   }
+
+  /* Enforce preemption. */
+  if (++thread_ticks >= TIME_SLICE)
+    intr_yield_on_return ();
+
 }
 
 /* Prints thread statistics. */
@@ -503,7 +503,6 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-
   return convert_to_int_round_to_nearest(multiply_int(thread_current()->recent_cpu, 100));
 }
 
@@ -696,7 +695,7 @@ int calculate_priority(int64_t recent_cpu, int nice){
 
 /* recent_cpu = (2 * load_avg)/ (2 * load_avg + 1) * recent_cpu + nice */
 int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice) {
-  return add_int(multiply(divide(multiply_int(load_average,2), add_int(multiply_int(load_average,2), 1)), recent_cpu), nice);
+  return add_int(multiply(divide(multiply_int(load_average, 2), add_int(multiply_int(load_average, 2), 1)), recent_cpu), nice);
 }
 
 /* load_avg = (59/60) * load_avg + (1 / 60) * ready_threads*/
@@ -705,36 +704,36 @@ int64_t calculate_load_average(int64_t load_average, int ready_threads){
 }
 
 void update_load_average() {
-  int ready_threads = 0;
-
-  ready_threads = list_size(&ready_list);
-
+  int ready_threads = list_size(&ready_list);
   if (thread_current() != idle_thread){
     ready_threads++;
   }
   load_average = calculate_load_average(load_average, ready_threads);
 }
 
-void update_recent_cpu(){
+void update_recent_cpu() {
   for (struct list_elem* e = list_begin (&all_list); e != list_end (&all_list);
     e = list_next (e))
   {
-    struct thread * current_thread = list_entry (e, struct thread, elem);
-    if (is_thread(current_thread) && current_thread != idle_thread){
+    struct thread * current_thread = list_entry (e, struct thread, allelem);
+    if (current_thread != idle_thread)
+    {
       current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
-        int_to_fixed_point(load_average), current_thread->nice);
+        load_average, current_thread->nice);
     }
   }
 }
 
 void update_priority(){
-    for (struct list_elem* e = list_begin (&ready_list); e != list_end (&ready_list);
-    e = list_next (e)){
-      struct thread * current_thread = list_entry (e, struct thread, elem);
-      if (is_thread(current_thread)){
-        current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
-      }
+  for (struct list_elem* e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+  {
+    struct thread * current_thread = list_entry (e, struct thread, allelem);
+    if (current_thread != idle_thread)
+    {
+      current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
     }
+  }
 }
 
 void sort_based_on_priority(){

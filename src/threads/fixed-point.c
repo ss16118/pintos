@@ -30,7 +30,7 @@ int64_t subtract(int64_t x, int64_t y) {
 }
 
 int64_t add_int(int64_t x, int n) {
-    return (x + n* f);
+    return (x + n * f);
 }
 
 int64_t subtract_int(int64_t x, int n) {
