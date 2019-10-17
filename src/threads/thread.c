@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/fixed-point.h"
+#include "devices/timer.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -148,26 +149,30 @@ thread_tick (void)
 
   if (thread_mlfqs)
   {
-    if (thread_current() != idle_thread){
+    if (thread_current() != idle_thread)
+    {
       thread_current()->recent_cpu = add_int(thread_current()->recent_cpu, 1);
     }
-    if (timer_ticks() % 100 == 0)
+    if (timer_ticks() % TIMER_FREQ == 0)
     {
       update_load_average();
       update_recent_cpu();
     }
-    if (timer_ticks() % 4 == 0)
+    if (timer_ticks() % TIME_INTERVAL == 0)
     {
       update_priority();
       sort_based_on_priority();
-
+      if (list_entry(list_begin(&ready_list), struct thread, elem)->priority >
+            thread_current()->priority)
+      {
+        intr_yield_on_return();
+      }
     }
   }
 
   /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
+  if (!thread_mlfqs && ++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
-
 }
 
 /* Prints thread statistics. */
@@ -242,7 +247,7 @@ thread_create (const char *name, int priority,
 
   if (t->effective_priority > thread_current()->effective_priority)
   {
-      thread_yield();
+    thread_yield();
   }
   return tid;
 }
@@ -401,13 +406,12 @@ thread_set_priority (int new_priority)
     {
       thread_current()->effective_priority = thread_get_highest_priority();
     }
-
-    // If the thread no longer has the highest priority, immediately yield CPU
-    if (list_entry(list_begin(&ready_list), struct thread, elem)->
-              effective_priority > thread_current()->effective_priority)
-    {
-      thread_yield();
-    }
+  }
+  // If the thread no longer has the highest priority, immediately yield CPU
+  if (list_entry(list_begin(&ready_list), struct thread, elem)->
+            effective_priority > thread_current()->effective_priority)
+  {
+    thread_yield();
   }
 }
 
@@ -472,13 +476,13 @@ void thread_donate_priority(struct thread *recipient)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice) 
+thread_set_nice (int nice)
 { 
-  struct thread* cur = thread_current();
+  struct thread *cur = thread_current();
   cur->nice = nice;
-  int priority = calculate_priority(cur->recent_cpu, nice);
-  cur -> priority = priority;
-  if (thread_get_highest_priority() > priority) 
+  cur->priority = calculate_priority(cur->recent_cpu, cur->nice);
+  if (list_entry(list_begin(&ready_list), struct thread, elem)->priority >
+        cur->priority) 
   {
     thread_yield();
   }
@@ -597,7 +601,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   t->magic = THREAD_MAGIC; 
-  t->nice = 0;
+  t->nice = (list_size(&all_list) == 0) ? 0 : thread_current()->nice;
   t->recent_cpu = 0;
 
   old_level = intr_disable ();
@@ -681,10 +685,10 @@ thread_schedule_tail (struct thread *prev)
 /* priority = PRI_MAX - (recent_cpu / 4) - (nice / 2) */
 int calculate_priority(int64_t recent_cpu, int nice){
   int priority = PRI_MAX;
-  priority -= (nice*2);
+  priority -= (nice * 2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
-  priority_fixed_point = subtract(priority_fixed_point,divide_int(recent_cpu,4));
-  priority = convert_to_int_round_to_nearest(priority_fixed_point);
+  priority_fixed_point = subtract(priority_fixed_point, divide_int(recent_cpu, 4));
+  priority = convert_to_int_round_towards_zero(priority_fixed_point);
   if (priority > PRI_MAX){
     priority = PRI_MAX;
   } else if (priority < PRI_MIN){
@@ -694,28 +698,33 @@ int calculate_priority(int64_t recent_cpu, int nice){
 } 
 
 /* recent_cpu = (2 * load_avg)/ (2 * load_avg + 1) * recent_cpu + nice */
-int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice) {
+int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice)
+{
   return add_int(multiply(divide(multiply_int(load_average, 2), add_int(multiply_int(load_average, 2), 1)), recent_cpu), nice);
 }
 
 /* load_avg = (59/60) * load_avg + (1 / 60) * ready_threads*/
-int64_t calculate_load_average(int64_t load_average, int ready_threads){
+int64_t calculate_load_average(int64_t load_average, int ready_threads)
+{
   return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
 }
 
-void update_load_average() {
+void update_load_average(void)
+{
   int ready_threads = list_size(&ready_list);
-  if (thread_current() != idle_thread){
+  if (thread_current() != idle_thread)
+  {
     ready_threads++;
   }
   load_average = calculate_load_average(load_average, ready_threads);
 }
 
-void update_recent_cpu() {
-  for (struct list_elem* e = list_begin (&all_list); e != list_end (&all_list);
-    e = list_next (e))
+void update_recent_cpu(void)
+{
+  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
+       e = list_next(e))
   {
-    struct thread * current_thread = list_entry (e, struct thread, allelem);
+    struct thread *current_thread = list_entry(e, struct thread, allelem);
     if (current_thread != idle_thread)
     {
       current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
@@ -724,11 +733,12 @@ void update_recent_cpu() {
   }
 }
 
-void update_priority(){
-  for (struct list_elem* e = list_begin (&all_list); e != list_end (&all_list);
-       e = list_next (e))
+void update_priority(void)
+{
+  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
+       e = list_next(e))
   {
-    struct thread * current_thread = list_entry (e, struct thread, allelem);
+    struct thread *current_thread = list_entry(e, struct thread, allelem);
     if (current_thread != idle_thread)
     {
       current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
@@ -736,8 +746,10 @@ void update_priority(){
   }
 }
 
-void sort_based_on_priority(){
-  list_sort(&ready_list,comp_priority,NULL);
+/* Sorts ready list based on thread priority to enable priority scheduling */
+void sort_based_on_priority()
+{
+  list_sort(&ready_list, comp_priority, NULL);
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and
