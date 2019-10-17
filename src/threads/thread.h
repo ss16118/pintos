@@ -149,6 +149,8 @@ bool comp_priority(const struct list_elem *a,
                   const struct list_elem *b,
                   void *aux );
 
+bool thread_is_highest_priority(void);
+
 int thread_get_priority (void);
 int thread_get_highest_priority(void);
 void thread_set_priority (int);

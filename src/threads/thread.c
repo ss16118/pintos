@@ -171,7 +171,7 @@ thread_tick (void)
   }
 
   /* Enforce preemption. */
-  if (!thread_mlfqs && ++thread_ticks >= TIME_SLICE)
+  if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
 
@@ -260,6 +260,10 @@ bool comp_priority(const struct list_elem *a,
 {
   struct thread *threadA = list_entry(a, struct thread, elem);
   struct thread *threadB = list_entry(b, struct thread, elem);
+  if (thread_mlfqs)
+  {
+    return threadA->priority > threadB->priority;
+  }
   return threadA->effective_priority > threadB->effective_priority;
 }
 
@@ -388,6 +392,15 @@ thread_foreach (thread_action_func *func, void *aux)
       struct thread *t = list_entry (e, struct thread, allelem);
       func (t, aux);
     }
+}
+
+bool thread_is_highest_priority(void)
+{
+  if (!list_empty(&ready_list))
+  {
+    return thread_current()->priority > list_entry(list_begin(&ready_list),struct thread, elem)-> priority;
+  }
+  return true;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -684,6 +697,7 @@ thread_schedule_tail (struct thread *prev)
 
 /* priority = PRI_MAX - (recent_cpu / 4) - (nice / 2) */
 int calculate_priority(int64_t recent_cpu, int nice){
+  
   int priority = PRI_MAX;
   priority -= (nice * 2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
@@ -691,7 +705,8 @@ int calculate_priority(int64_t recent_cpu, int nice){
   priority = convert_to_int_round_towards_zero(priority_fixed_point);
   if (priority > PRI_MAX){
     priority = PRI_MAX;
-  } else if (priority < PRI_MIN){
+  } 
+  if (priority < PRI_MIN){
     priority = PRI_MIN;
   }
   return priority;
