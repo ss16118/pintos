@@ -110,22 +110,27 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-static int64_t load_average = 0;  //(defined in thread.c)
+static int64_t load_average = 0;  /* defined in thread.c */
+
+int nice, int64_t recent_cpu are added to struct thread for the
+advanced scheduler.
+
+int nice is used to store the niceness of the thread, whereas recent_cpu stores
+the thread's cpu_usage. Both attributes are used in the calculation of priority.
 
 
-int nice, int64_t recent_cpu are added to struct thread for the advanced scheduler.
-
-int nice is used to store the niceness of the thread, whereas recent_cpu stores the thread's cpu_usage. Both attributes are used in the calculation of priority.
-
-
-load_average is global variable that estimates the average number of threads that are in running or ready threads in the past 60 seconds.
+load_average is a global variable that estimates the average number of threads
+that are running or ready threads in the past 60 seconds.
 
 load_average is used in the calculation of recent_cpu.
 
-recent_cpu and load_average are real numbers. To minimized rounding error, they are stored as (2 ^ 14 * their actual value). 
-Conversion back to their actual value only happens when their value are retrived.
+recent_cpu and load_average are real numbers. To minimize rounding error, they
+are stored as 2 ^ 14 multiplied by their actual value. 
+Conversion back to their actual value only happens when their values
+are retrieved by the get functions.
 
-We haven't used any additional data_structure to store the threads. They are still kept in the ready_list which is sorted every time priority is updated.
+We have not used any additional data_structure to store the threads. They are
+still kept in the ready_list which is sorted every time priority is updated.
 
 ---- ALGORITHMS ----
 
@@ -154,11 +159,11 @@ ticks   A   B   C   A   B   C   to run
 >> uncertain? 
 >> If so, what rule did you use to resolve them?
 
-When two threads has the same priority, the scheduler's behaviour is undefined by the specification.
-In our implementation, when two threads has the same priority, their relative position in the ready_list is kept unchanged. 
-This mean that the scheduler will tend to keep the current thread running.
+When two threads have the same priority, the scheduler's behaviour is undefined
+by the specification. In our implementation, when two threads have the same
+priority, their relative position in the ready_list is kept unchanged. 
+This means that the scheduler will keep the current thread running.
 As a result, the cost of swapping running thread is minimized.
-
 
 ---- RATIONALE ----
 
@@ -166,10 +171,14 @@ As a result, the cost of swapping running thread is minimized.
 >> Briefly critique your design, pointing out advantages and disadvantages in 
 >> your design choices.
 
-We uses one queue(the ready_list) rather than 64 lists to store the threads. 
-There are two major advantages in this design. Firstly, the design uses less memory no additional list data structure is used to store the threads.
-Secondly, when there are few threads in the ready_list, the program runs faster as there is no need to traverse through all 64 lists.
+We use one queue (the ready_list) rather than 64 lists to store the threads. 
+There are two major advantages in this design. Firstly, the design uses
+less memory, since no additional list data structure is used to store the
+threads. Secondly, when there are few threads in the ready_list, the program
+runs faster as there is no need to traverse through all 64 lists.
 
-However, when the number of threads increases, our design becomes less efficient. 
-That is because the ready_list needs to be sorted every time the priority is updated(this operation has complexity O(nlogn) ).
-Carrying out such an expensive operation every 4 ticks (0.04s) causes the program to get slower.
+However, when the number of threads increases, our design becomes
+less efficient. That is because the ready_list needs to be sorted every time the
+priority is updated (this operation has complexity O(nlogn)).
+Carrying out such an expensive operation every 4 ticks (0.04s) causes
+the program to get slower.
