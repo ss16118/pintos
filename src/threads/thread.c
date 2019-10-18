@@ -158,7 +158,7 @@ thread_tick (void)
       update_load_average();
       update_recent_cpu();
     }
-    if (timer_ticks() % TIME_INTERVAL == 0)
+    if (timer_ticks() % TIME_SLICE == 0)
     {
       update_priority();
       sort_based_on_priority();
