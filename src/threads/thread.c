@@ -162,8 +162,7 @@ thread_tick (void)
     {
       update_priority();
       sort_based_on_priority();
-      if (list_entry(list_begin(&ready_list), struct thread, elem)->priority >
-            thread_current()->priority)
+      if (!thread_is_highest_priority())
       {
         intr_yield_on_return();
       }
@@ -172,7 +171,9 @@ thread_tick (void)
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
+  {
     intr_yield_on_return ();
+  }
 }
 
 /* Prints thread statistics. */
@@ -252,7 +253,7 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-/* Compares the thread effective priority of two list elements. For use in
+/* Compares the thread priority of two list elements. For use in
    priority scheduling */
 bool comp_priority(const struct list_elem *a,
                   const struct list_elem *b,
@@ -394,18 +395,28 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* Checks if the current running thread has the highest priority */
 bool thread_is_highest_priority(void)
 {
   if (!list_empty(&ready_list))
   {
-    return thread_current()->priority > list_entry(list_begin(&ready_list),struct thread, elem)-> priority;
+    if (thread_mlfqs)
+    {
+      return (thread_current()->priority >
+              list_entry(list_begin(&ready_list), struct thread, elem)->priority);
+    }
+    else
+    {
+      return (thread_current()->effective_priority >
+              list_entry(list_begin(&ready_list), struct thread, elem)->effective_priority);
+    }
   }
   return true;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
-thread_set_priority (int new_priority) 
+thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
   if (!thread_mlfqs)
@@ -421,8 +432,7 @@ thread_set_priority (int new_priority)
     }
   }
   // If the thread no longer has the highest priority, immediately yield CPU
-  if (list_entry(list_begin(&ready_list), struct thread, elem)->
-            effective_priority > thread_current()->effective_priority)
+  if (!thread_is_highest_priority())
   {
     thread_yield();
   }
@@ -438,7 +448,7 @@ thread_get_priority (void)
 }
 
 /* Returns the highest priority out of the current thread's dependent threads,
-   not for use with mlfqs mode on*/
+   NOT FOR USE with mlfqs mode on*/
 int thread_get_highest_priority(void)
 {
   if (!list_empty(&thread_current()->dependent_list))
@@ -494,8 +504,7 @@ thread_set_nice (int nice)
   struct thread *cur = thread_current();
   cur->nice = nice;
   cur->priority = calculate_priority(cur->recent_cpu, cur->nice);
-  if (list_entry(list_begin(&ready_list), struct thread, elem)->priority >
-        cur->priority) 
+  if (!thread_is_highest_priority())
   {
     thread_yield();
   }
@@ -614,6 +623,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   t->magic = THREAD_MAGIC; 
+
+  /* The new thread's nice is inherited if it has a parent thread, else it is
+     set to 0 */
   t->nice = (list_size(&all_list) == 0) ? 0 : thread_current()->nice;
   t->recent_cpu = 0;
 
@@ -695,35 +707,44 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
-/* priority = PRI_MAX - (recent_cpu / 4) - (nice / 2) */
-int calculate_priority(int64_t recent_cpu, int nice){
-  
+/* Calculates the priority of a thread with MLFQS MODE ON using the formula
+      priority = PRI_MAX - (recent_cpu / 4) - (nice / 2)
+*/
+int calculate_priority(int64_t recent_cpu, int nice)
+{
   int priority = PRI_MAX;
   priority -= (nice * 2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
   priority_fixed_point = subtract(priority_fixed_point, divide_int(recent_cpu, 4));
   priority = convert_to_int_round_towards_zero(priority_fixed_point);
-  if (priority > PRI_MAX){
+  if (priority > PRI_MAX)
+  {
     priority = PRI_MAX;
   } 
-  if (priority < PRI_MIN){
+  if (priority < PRI_MIN)
+  {
     priority = PRI_MIN;
   }
   return priority;
 } 
 
-/* recent_cpu = (2 * load_avg)/ (2 * load_avg + 1) * recent_cpu + nice */
+/* Calculates the recent_cpu of a thread with MLFQS MODE ON using the formula
+      recent_cpu = (2 * load_avg)/ (2 * load_avg + 1) * recent_cpu + nice
+*/
 int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice)
 {
   return add_int(multiply(divide(multiply_int(load_average, 2), add_int(multiply_int(load_average, 2), 1)), recent_cpu), nice);
 }
 
-/* load_avg = (59/60) * load_avg + (1 / 60) * ready_threads*/
+/* Calculates the load_avg of a thread with MLFQS MODE ON using the formula
+      load_avg = (59/60) * load_avg + (1 / 60) * ready_threads
+*/
 int64_t calculate_load_average(int64_t load_average, int ready_threads)
 {
   return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
 }
 
+/* Updates the load_avg global variable with MLFQS MODE ON */
 void update_load_average(void)
 {
   int ready_threads = list_size(&ready_list);
@@ -734,8 +755,13 @@ void update_load_average(void)
   load_average = calculate_load_average(load_average, ready_threads);
 }
 
+/* Calculates and updates the recent_cpu value for all threads, does not require
+   interrupts to be disabled as this function is only called during a timer
+   interrupt, requires MLFQS TRUE*/
 void update_recent_cpu(void)
 {
+  ASSERT(thread_mlfqs);
+
   for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
        e = list_next(e))
   {
@@ -748,8 +774,13 @@ void update_recent_cpu(void)
   }
 }
 
+/* Calculates and updates the priority value for all threads, does not require
+   interrupts to be disabled as this function is only called during a timer
+   interrupt */
 void update_priority(void)
 {
+  ASSERT(thread_mlfqs);
+
   for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
        e = list_next(e))
   {
