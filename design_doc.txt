@@ -9,8 +9,10 @@
 >> Fill in the names and email addresses of your group members.
 
 FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Ruoyu   Hu    rh4618@ic.ac.uk
+Siyuan  Shen  ss16118@ic.ac.uk
+Hantang Sun   hs5718@ic.ac.uk
+Yifei   Zhang yz31218@ic.ac.uk
 
 ---- PRELIMINARIES ----
 
@@ -30,16 +32,84 @@ FirstName LastName <email@domain.example>
 >> Copy here the declaration of each new or changed `struct' or `struct' member,
 >> global or static variable, `typedef', or enumeration.  
 >> Identify the purpose of each in roughly 25 words.
+ 
+  int effective_priority;
+
+This is added to the thread struct to be its effective priority, as in the event
+of priority donation it would have an artificially higher priority but will need
+to be able to reset to its base priority once all required resources are
+released.
+
+  struct thread *dependent_on;
+
+This thread pointer was added as a member of the thread struct in order to
+record the thread if any, that this thread was reliant on for a resource that it
+possesses. Is initilised to NULL.
+
+  struct list_elem dependent_elem;
+
+This list elem is to be stored inside another thread's dependent list when it
+holds a resource that this thread possesses.
+
+  struct list dependent_list;
+
+This list holds all threads that are dependent on this thread for a resource, so
+that this thread's effective priority can be calculated where one resource is
+released and the thread no longer has the highest priority.
 
 >> A2: (4 marks) 
 >> Draw a diagram that illustrates a nested donation in your structure and 
 >> briefly explain how this works.
+
+      ___         ___         ___
+     |   |[35]   |   |33:[35]|   |31:33:[35]
+     | B |------>| A |------>| M |
+     |___|       |___|       |___|
+       |           |....|L1|---|
+       |....|L2|---|
+
+The above diagram illustrates a situation where a main thread, denoted as M
+creates a thread A which has priority 33, acquires lock L2 and is looking to
+acquire lock L1, a resource that M holds. As such, thread A donates its priority
+to M, raising its effective priority to 33, thread A can now be blocked and wait
+until M relinquishes ownership of L1.
+
+A thread, B is then created, which has priority 35, this thread looks to acquire
+L2, but is unable to do so, as such it dontes its priority to A, raising its
+effective priority to 35, it then checks and sees that A is 'depedent on' M, and
+donates its prority to M also, artificially raising its effective priority.
+
+The priority donation process works recursively to search through the existing
+chain of dependencies and donates a higher priority where applicable. The order
+order of priorities for each thread is shown above, with the final effective
+priority enclosed in brackets.
 
 ---- ALGORITHMS ----
 
 >> A3: (3 marks) 
 >> How do you ensure that the highest priority waiting thread wakes up first for
 >> a (i) lock, (ii) semaphore, or (iii) condition variable?
+
+i.  The list of threads waiting to acquire a lock is stored in the lock's
+    semaphore member, as such, the first thread to wake up after the lock is
+    released is the first thread to be woken up by the semaphore as the lock's
+    semaphore is sema-uped. As priority scheduling is working for semaphores, we
+    can guarantee that the first thread to wake up is the thread with the
+    highest priority.
+
+ii. Priority scheduling is implemented for semaphores by first inserting threads
+    into the waiters list ordered by their priorities when a thread attempts to
+    down the semaphore. When the semaphore is brought up, it first sorts the
+    waiters list by priority again, to account for any changes to priorites due
+    to priority donations, then unblocks the first thread in list, which is the
+    thread with the highest priority after sorting.
+
+iii.Priority scheduling is implemented for condition variables by changing the 
+    condition signalling function cond_signal which wakes up waiters on
+    conditions. By sorting the list of waiting conditions by the highest
+    priority of each list of waiters on that condition, we can ensure that the
+    the condition with the highest priority waiter will wake up that waiter
+    first.
 
 >> A4: (3 marks)
 >> Describe the sequence of events when a call to lock_acquire() causes a 
