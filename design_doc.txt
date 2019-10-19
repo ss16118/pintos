@@ -144,6 +144,8 @@ iii.Priority scheduling is implemented for condition variables by changing the
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+1. new struct member:
+
 struct thread
   {
     /* Owned by thread.c. */
@@ -162,8 +164,8 @@ struct thread
 
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
-    int nice;                           /* Nice value of the thread*/
-    int64_t recent_cpu;                 /* recent_cpu value of the thread */
+--> int nice;                           /* Nice value of the thread*/
+--> int64_t recent_cpu;                 /* recent_cpu value of the thread */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -180,6 +182,11 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
+2.static variable:
+
+static int64_t load_average = 0;
+
+
 static int64_t load_average = 0;  /* defined in thread.c */
 
 int nice, int64_t recent_cpu are added to struct thread for the
@@ -188,11 +195,9 @@ advanced scheduler.
 int nice is used to store the niceness of the thread, whereas recent_cpu stores
 the thread's cpu_usage. Both attributes are used in the calculation of priority.
 
-
-load_average is a global variable that estimates the average number of threads
-that are running or ready threads in the past 60 seconds.
-
-load_average is used in the calculation of recent_cpu.
+load_average is a static variable that estimates the average number of threads
+that are running or ready threads in the past 60 seconds. It is used in the 
+calculation of recent_cpu.
 
 recent_cpu and load_average are real numbers. To minimize rounding error, they
 are stored as 2 ^ 14 multiplied by their actual value. 
@@ -213,16 +218,16 @@ still kept in the ready_list which is sorted every time priority is updated.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0    	0	0	0	31	29	27	A	
- 4		4	0	0	30	29	27	A
- 8		8	0	0	29	29	27	A
-12		12	0	0	28	29	27	B
-16		12	4	0	28	28	27	A
-20		16	4	0	27	28	27	B
-24		16	8	0	27	27	27	A
-28		20	8	0	26	27	27	B
-32		20	12	0	26	26	27	C
-36		20	12	4	26	26	26	A
+ 0    	0	 0	 0	 31	 29	 27	     A	
+ 4		  4	 0 	 0	 30	 29	 27	     A
+ 8		  8	 0	 0	 29	 29	 27	     A
+12		 12	 0	 0	 28	 29	 27	     B
+16	 	 12	 4	 0	 28	 28	 27	     A
+20		 16	 4	 0	 27	 28	 27	     B
+24		 16	 8	 0	 27	 27	 27	     A
+28		 20	 8	 0	 26	 27	 27	     B
+32		 20	12	 0	 26	 26	 27	     C
+36		 20	12	 4	 26	 26	 26	     A
 
 >> B3: (2 marks) 
 >> Did any ambiguities in the scheduler specification make values in the table 
