@@ -90,35 +90,61 @@ priority enclosed in brackets.
 >> How do you ensure that the highest priority waiting thread wakes up first for
 >> a (i) lock, (ii) semaphore, or (iii) condition variable?
 
-i.  The list of threads waiting to acquire a lock is stored in the lock's
-    semaphore member, as such, the first thread to wake up after the lock is
-    released is the first thread to be woken up by the semaphore as the lock's
-    semaphore is sema-uped. As priority scheduling is working for semaphores, we
-    can guarantee that the first thread to wake up is the thread with the
-    highest priority.
+i.    The list of threads waiting to acquire a lock is stored in the lock's
+      semaphore member, as such, the first thread to wake up after the lock is
+      released is the first thread to be woken up by the semaphore as the lock's
+      semaphore is sema-uped. As priority scheduling is working for semaphores, we
+      can guarantee that the first thread to wake up is the thread with the
+      highest priority.
 
-ii. Priority scheduling is implemented for semaphores by first inserting threads
-    into the waiters list ordered by their priorities when a thread attempts to
-    down the semaphore. When the semaphore is brought up, it first sorts the
-    waiters list by priority again, to account for any changes to priorites due
-    to priority donations, then unblocks the first thread in list, which is the
-    thread with the highest priority after sorting.
+ii.   Priority scheduling is implemented for semaphores by first inserting threads
+      into the waiters list ordered by their priorities when a thread attempts to
+      down the semaphore. When the semaphore is brought up, it first sorts the
+      waiters list by priority again, to account for any changes to priorites due
+      to priority donations, then unblocks the first thread in list, which is the
+      thread with the highest priority after sorting.
 
-iii.Priority scheduling is implemented for condition variables by changing the 
-    condition signalling function cond_signal which wakes up waiters on
-    conditions. By sorting the list of waiting conditions by the highest
-    priority of each list of waiters on that condition, we can ensure that the
-    the condition with the highest priority waiter will wake up that waiter
-    first.
+iii.  Priority scheduling is implemented for condition variables by changing the 
+      condition signalling function cond_signal(), which wakes up waiters on
+      conditions. Each waiter accomodates a list of threads that wait on that
+      specific condition. Therefore, by sorting the conditions by the highest
+      priority of their waiting threads, we can ensure that the condition which
+      contains the highest priority thread will be woken up first.
 
 >> A4: (3 marks)
 >> Describe the sequence of events when a call to lock_acquire() causes a 
 >> priority donation. 
 >> How is nested donation handled?
 
+After lock_acquire() is invoked by a thread A, it first checks if the semaphore
+contained in the lock can be downed by using the function sema_try_down(). If
+it fails to do so, it signifies that the lock is already obtained by another
+thread B. In this case, the dependent_on member of thread A is set to thread B,
+and thread A is inserted into the dependent_list of thread B, which is a list
+of threads that seek to gain access to the resources owned by thread B. In
+addition, dependent_list is an ordered list, which ensures that thread A's
+effective priority can be acquired efficiently by getting the priority of the
+first thread in the list. Then, thread A is inserted into the waiting list
+of the semaphore in an ordered fashion. Next, it invokes the function 
+thread_donate_priority(), which donates thread A's priority to thread B, if
+thread B's effective priority is smaller than that of thread A. Nested donation
+is also dealt with in this function, as it checks whether thread B is dependent
+on another thread C. If it is, the function is invoked again in a recursive fashion
+to donate thread A's effective priority to thread C. When this is completed,
+thread A blocks itself until it is its turn to acquire the lock.
+
 >> A5: (3 marks)
 >> Describe the sequence of events when lock_release() is called on a lock that 
 >> a higher-priority thread is waiting for.
+
+If a lock is released by thread A, we first obtain the next thread to acquire the lock, 
+thread B, by getting the first element of the waiting list of the lock's semaphore, 
+since it will be the next thread to obtain the lock. Then, the function 
+thread_change_dependencies() is called. This sets all the members of the semaphore's
+waiting list to be dependent on thread B while removing them from thread A's dependent_list. 
+Thread A's effective priority will be set to the effective priority of the next thread 
+on its dependent_list by the thread_get_highest_priority(). Lastly, the lock's 
+holder is temporarily set to NULL and sema_up is called to unblock thread B.
 
 ---- SYNCHRONIZATION ----
 
@@ -128,11 +154,15 @@ iii.Priority scheduling is implemented for condition variables by changing the
 >> potentially change during the computation?
 >> Can you use a lock to avoid the race?
 
+
+
 ---- RATIONALE ----
 
 >> A7: (3 marks)
 >> Why did you choose this design?  
 >> In what ways is it superior to another design you considered?
+
+
 
               ADVANCED SCHEDULER
               ==================
@@ -211,14 +241,14 @@ still kept in the ready_list which is sorted every time priority is updated.
 
 >> B2: (3 marks)
 >> Suppose threads A, B, and C have nice values 0, 1, and 2 and each has a 
->> recent_cpu value of 0. 
+>> recent_cpu value of 0.
 >> Fill in the table below showing the scheduling decision, the priority and the
 >> recent_cpu values for each thread after each given number of timer ticks:
 
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0    	0	 0	 0	 31	 29	 27	     A	
+ 0    	0	 0	 0	 31	 29	 27	     A
  4		  4	 0 	 0	 30	 29	 27	     A
  8		  8	 0	 0	 29	 29	 27	     A
 12		 12	 0	 0	 28	 29	 27	     B
