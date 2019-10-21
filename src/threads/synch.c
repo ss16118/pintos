@@ -281,6 +281,7 @@ lock_release (struct lock *lock)
   if (!thread_mlfqs && !list_empty(&lock->semaphore.waiters))
   {
     enum intr_level old_level = intr_disable();
+    list_sort(&lock->semaphore.waiters, &comp_priority, NULL);
     struct thread *dependent_thread = list_entry(list_begin(&lock->semaphore.waiters),
                                   struct thread, elem);
     list_remove(&dependent_thread->dependent_elem);

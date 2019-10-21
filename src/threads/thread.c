@@ -443,8 +443,8 @@ int
 thread_get_priority (void) 
 {
   return (!thread_mlfqs) ?
-              thread_current()->effective_priority :
-              thread_current()->priority;
+            thread_current()->effective_priority :
+            thread_current()->priority;
 }
 
 /* Returns the highest priority out of the current thread's dependent threads,
@@ -453,9 +453,12 @@ int thread_get_highest_priority(void)
 {
   if (!list_empty(&thread_current()->dependent_list))
   {
-    return list_entry(list_begin(&thread_current()->dependent_list),
+    int donated_priority = list_entry(list_begin(&thread_current()->dependent_list),
                                  struct thread,
                                  dependent_elem)->effective_priority;
+    return (donated_priority > thread_current()->priority) ?
+              donated_priority :
+              thread_current()->effective_priority;
   }
   return thread_current()->priority;
 }
