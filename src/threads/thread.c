@@ -402,12 +402,12 @@ bool thread_is_highest_priority(void)
   {
     if (thread_mlfqs)
     {
-      return (thread_current()->priority >
+      return (thread_current()->priority >=
               list_entry(list_begin(&ready_list), struct thread, elem)->priority);
     }
     else
     {
-      return (thread_current()->effective_priority >
+      return (thread_current()->effective_priority >=
               list_entry(list_begin(&ready_list), struct thread, elem)->effective_priority);
     }
   }
