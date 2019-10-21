@@ -9,8 +9,10 @@
 >> Fill in the names and email addresses of your group members.
 
 FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Ruoyu   Hu    rh4618@ic.ac.uk
+Siyuan  Shen  ss16118@ic.ac.uk
+Hantang Sun   hs5718@ic.ac.uk
+Yifei   Zhang yz31218@ic.ac.uk
 
 ---- PRELIMINARIES ----
 
@@ -30,10 +32,57 @@ FirstName LastName <email@domain.example>
 >> Copy here the declaration of each new or changed `struct' or `struct' member,
 >> global or static variable, `typedef', or enumeration.  
 >> Identify the purpose of each in roughly 25 words.
+ 
+  int effective_priority;
+
+This is added to the thread struct to be its effective priority, as in the event
+of priority donation it would have an artificially higher priority but will need
+to be able to reset to its base priority once all required resources are
+released.
+
+  struct thread *dependent_on;
+
+This thread pointer was added as a member of the thread struct in order to
+record the thread if any, that this thread was reliant on for a resource that it
+possesses. Is initilised to NULL.
+
+  struct list_elem dependent_elem;
+
+This list elem is to be stored inside another thread's dependent list when it
+holds a resource that this thread possesses.
+
+  struct list dependent_list;
+
+This list holds all threads that are dependent on this thread for a resource, so
+that this thread's effective priority can be calculated where one resource is
+released and the thread no longer has the highest priority.
 
 >> A2: (4 marks) 
 >> Draw a diagram that illustrates a nested donation in your structure and 
 >> briefly explain how this works.
+
+      ___         ___         ___
+     |   |[35]   |   |33:[35]|   |31:33:[35]
+     | B |------>| A |------>| M |
+     |___|       |___|       |___|
+       |           |....|L1|---|
+       |....|L2|---|
+
+The above diagram illustrates a situation where a main thread, denoted as M
+creates a thread A which has priority 33, acquires lock L2 and is looking to
+acquire lock L1, a resource that M holds. As such, thread A donates its priority
+to M, raising its effective priority to 33, thread A can now be blocked and wait
+until M relinquishes ownership of L1.
+
+A thread, B is then created, which has priority 35, this thread looks to acquire
+L2, but is unable to do so, as such it dontes its priority to A, raising its
+effective priority to 35, it then checks and sees that A is 'depedent on' M, and
+donates its prority to M also, artificially raising its effective priority.
+
+The priority donation process works recursively to search through the existing
+chain of dependencies and donates a higher priority where applicable. The order
+order of priorities for each thread is shown above, with the final effective
+priority enclosed in brackets.
 
 ---- ALGORITHMS ----
 
@@ -41,14 +90,61 @@ FirstName LastName <email@domain.example>
 >> How do you ensure that the highest priority waiting thread wakes up first for
 >> a (i) lock, (ii) semaphore, or (iii) condition variable?
 
+i.    The list of threads waiting to acquire a lock is stored in the lock's
+      semaphore member, as such, the first thread to wake up after the lock is
+      released is the first thread to be woken up by the semaphore as the lock's
+      semaphore is sema-uped. As priority scheduling is working for semaphores, we
+      can guarantee that the first thread to wake up is the thread with the
+      highest priority.
+
+ii.   Priority scheduling is implemented for semaphores by first inserting threads
+      into the waiters list ordered by their priorities when a thread attempts to
+      down the semaphore. When the semaphore is brought up, it first sorts the
+      waiters list by priority again, to account for any changes to priorites due
+      to priority donations, then unblocks the first thread in list, which is the
+      thread with the highest priority after sorting.
+
+iii.  Priority scheduling is implemented for condition variables by changing the 
+      condition signalling function cond_signal(), which wakes up waiters on
+      conditions. Each waiter accomodates a list of threads that wait on that
+      specific condition. Therefore, by sorting the conditions by the highest
+      priority of their waiting threads, we can ensure that the condition which
+      contains the highest priority thread will be woken up first.
+
 >> A4: (3 marks)
 >> Describe the sequence of events when a call to lock_acquire() causes a 
 >> priority donation. 
 >> How is nested donation handled?
 
+After lock_acquire() is invoked by a thread A, it first checks if the semaphore
+contained in the lock can be downed by using the function sema_try_down(). If
+it fails to do so, it signifies that the lock is already obtained by another
+thread B. In this case, the dependent_on member of thread A is set to thread B,
+and thread A is inserted into the dependent_list of thread B, which is a list
+of threads that seek to gain access to the resources owned by thread B. In
+addition, dependent_list is an ordered list, which ensures that thread A's
+effective priority can be acquired efficiently by getting the priority of the
+first thread in the list. Then, thread A is inserted into the waiting list
+of the semaphore in an ordered fashion. Next, it invokes the function 
+thread_donate_priority(), which donates thread A's priority to thread B, if
+thread B's effective priority is smaller than that of thread A. Nested donation
+is also dealt with in this function, as it checks whether thread B is dependent
+on another thread C. If it is, the function is invoked again in a recursive fashion
+to donate thread A's effective priority to thread C. When this is completed,
+thread A blocks itself until it is its turn to acquire the lock.
+
 >> A5: (3 marks)
 >> Describe the sequence of events when lock_release() is called on a lock that 
 >> a higher-priority thread is waiting for.
+
+If a lock is released by thread A, we first obtain the next thread to acquire the lock, 
+thread B, by getting the first element of the waiting list of the lock's semaphore, 
+since it will be the next thread to obtain the lock. Then, the function 
+thread_change_dependencies() is called. This sets all the members of the semaphore's
+waiting list to be dependent on thread B while removing them from thread A's dependent_list. 
+Thread A's effective priority will be set to the effective priority of the next thread 
+on its dependent_list by the thread_get_highest_priority(). Lastly, the lock's 
+holder is temporarily set to NULL and sema_up is called to unblock thread B.
 
 ---- SYNCHRONIZATION ----
 
@@ -58,11 +154,15 @@ FirstName LastName <email@domain.example>
 >> potentially change during the computation?
 >> Can you use a lock to avoid the race?
 
+
+
 ---- RATIONALE ----
 
 >> A7: (3 marks)
 >> Why did you choose this design?  
 >> In what ways is it superior to another design you considered?
+
+
 
               ADVANCED SCHEDULER
               ==================
@@ -73,6 +173,8 @@ FirstName LastName <email@domain.example>
 >> Copy here the declaration of each new or changed `struct' or `struct' member,
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
+
+1. new struct member:
 
 struct thread
   {
@@ -92,8 +194,8 @@ struct thread
 
     struct list_elem dependent_elem;    /* List element for dependent list */
     struct list dependent_list;         /* List of threads dependent on this thread */
-    int nice;                           /* Nice value of the thread*/
-    int64_t recent_cpu;                 /* recent_cpu value of the thread */
+--> int nice;                           /* Nice value of the thread*/
+--> int64_t recent_cpu;                 /* recent_cpu value of the thread */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -110,6 +212,11 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
+2.static variable:
+
+static int64_t load_average = 0;
+
+
 static int64_t load_average = 0;  /* defined in thread.c */
 
 int nice, int64_t recent_cpu are added to struct thread for the
@@ -118,11 +225,9 @@ advanced scheduler.
 int nice is used to store the niceness of the thread, whereas recent_cpu stores
 the thread's cpu_usage. Both attributes are used in the calculation of priority.
 
-
-load_average is a global variable that estimates the average number of threads
-that are running or ready threads in the past 60 seconds.
-
-load_average is used in the calculation of recent_cpu.
+load_average is a static variable that estimates the average number of threads
+that are running or ready threads in the past 60 seconds. It is used in the 
+calculation of recent_cpu.
 
 recent_cpu and load_average are real numbers. To minimize rounding error, they
 are stored as 2 ^ 14 multiplied by their actual value. 
@@ -136,23 +241,23 @@ still kept in the ready_list which is sorted every time priority is updated.
 
 >> B2: (3 marks)
 >> Suppose threads A, B, and C have nice values 0, 1, and 2 and each has a 
->> recent_cpu value of 0. 
+>> recent_cpu value of 0.
 >> Fill in the table below showing the scheduling decision, the priority and the
 >> recent_cpu values for each thread after each given number of timer ticks:
 
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0    	0	0	0	31	29	27	A	
- 4		4	0	0	30	29	27	A
- 8		8	0	0	29	29	27	A
-12		12	0	0	28	29	27	B
-16		12	4	0	28	28	27	A
-20		16	4	0	27	28	27	B
-24		16	8	0	27	27	27	A
-28		20	8	0	26	27	27	B
-32		20	12	0	26	26	27	C
-36		20	12	4	26	26	26	A
+ 0    	0	 0	 0	 31	 29	 27	     A
+ 4		  4	 0 	 0	 30	 29	 27	     A
+ 8		  8	 0	 0	 29	 29	 27	     A
+12		 12	 0	 0	 28	 29	 27	     B
+16	 	 12	 4	 0	 28	 28	 27	     A
+20		 16	 4	 0	 27	 28	 27	     B
+24		 16	 8	 0	 27	 27	 27	     A
+28		 20	 8	 0	 26	 27	 27	     B
+32		 20	12	 0	 26	 26	 27	     C
+36		 20	12	 4	 26	 26	 26	     A
 
 >> B3: (2 marks) 
 >> Did any ambiguities in the scheduler specification make values in the table 
