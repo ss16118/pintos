@@ -8,6 +8,7 @@
 #define TIMER_FREQ 100
 /*time interval for updating priority.*/
 #define TIME_INTERVAL 4
+#define SLEEP_DEFAULT -1
 
 void timer_init (void);
 void timer_calibrate (void);

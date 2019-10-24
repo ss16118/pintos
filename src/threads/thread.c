@@ -259,8 +259,8 @@ bool comp_priority(const struct list_elem *a,
                   const struct list_elem *b,
                   void *aux UNUSED)
 {
-  struct thread *threadA = list_entry(a, struct thread, elem);
-  struct thread *threadB = list_entry(b, struct thread, elem);
+  struct thread *threadA = thread_get_thread(a);
+  struct thread *threadB = thread_get_thread(b);
   if (thread_mlfqs)
   {
     return threadA->priority > threadB->priority;
@@ -395,6 +395,12 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+struct thread* thread_get_thread(const struct list_elem* e)
+{
+  struct thread* t = list_entry(e, struct thread, elem);
+  return t;
+}
+
 /* Checks if the current running thread has the highest priority */
 bool thread_is_highest_priority(void)
 {
@@ -403,12 +409,12 @@ bool thread_is_highest_priority(void)
     if (thread_mlfqs)
     {
       return (thread_current()->priority >=
-              list_entry(list_begin(&ready_list), struct thread, elem)->priority);
+              thread_get_thread(list_begin(&ready_list))->priority);
     }
     else
     {
       return (thread_current()->effective_priority >=
-              list_entry(list_begin(&ready_list), struct thread, elem)->effective_priority);
+              thread_get_thread(list_begin(&ready_list))->effective_priority);
     }
   }
   return true;
@@ -475,7 +481,7 @@ void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
          waiter != list_end(waiting_list);
          waiter = list_next(waiter))
     {
-      struct thread *th = list_entry(waiter, struct thread, elem);
+      struct thread *th = thread_get_thread(waiter);
       if (dep != th)
       {
         th->dependent_on = dep;
@@ -491,7 +497,8 @@ void thread_change_dependencies(struct list *waiting_list, struct thread *dep)
 /* Recursively donates current thread's effective priority to RECIPIENT */
 void thread_donate_priority(struct thread *recipient)
 {
-  if (recipient->effective_priority < thread_current()->effective_priority) {
+  if (recipient->effective_priority < thread_current()->effective_priority)
+  {
     recipient->effective_priority = thread_current()->effective_priority;
     if (recipient->dependent_on != NULL)
     {
@@ -525,14 +532,16 @@ int
 thread_get_load_avg (void) 
 {
 
-  return  convert_to_int_round_to_nearest(multiply_int(load_average, 100)) ;
+  return convert_to_int_round_to_nearest(multiply_int(load_average, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return convert_to_int_round_to_nearest(multiply_int(thread_current()->recent_cpu, 100));
+  return convert_to_int_round_to_nearest(multiply_int(
+                                                  thread_current()->recent_cpu,
+                                                  100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -622,7 +631,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->effective_priority = priority;
-  t->wake_time = -1;
+  t->wake_time = SLEEP_DEFAULT;
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   t->magic = THREAD_MAGIC; 
@@ -718,7 +727,8 @@ int calculate_priority(int64_t recent_cpu, int nice)
   int priority = PRI_MAX;
   priority -= (nice * 2);
   int64_t priority_fixed_point = int_to_fixed_point(priority);
-  priority_fixed_point = subtract(priority_fixed_point, divide_int(recent_cpu, 4));
+  priority_fixed_point = subtract(priority_fixed_point,
+                                  divide_int(recent_cpu, 4));
   priority = convert_to_int_round_towards_zero(priority_fixed_point);
   if (priority > PRI_MAX)
   {
@@ -736,7 +746,9 @@ int calculate_priority(int64_t recent_cpu, int nice)
 */
 int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice)
 {
-  return add_int(multiply(divide(multiply_int(load_average, 2), add_int(multiply_int(load_average, 2), 1)), recent_cpu), nice);
+  return add_int(multiply(divide(multiply_int(load_average, 2),
+                          add_int(multiply_int(load_average, 2), 1)),
+                          recent_cpu), nice);
 }
 
 /* Calculates the load_avg of a thread with MLFQS MODE ON using the formula
@@ -744,7 +756,8 @@ int64_t calculate_recent_cpu(int64_t recent_cpu, int64_t load_average, int nice)
 */
 int64_t calculate_load_average(int64_t load_average, int ready_threads)
 {
-  return add(divide_int(multiply_int(load_average, 59), 60), divide_int(int_to_fixed_point(ready_threads), 60));
+  return add(divide_int(multiply_int(load_average, 59), 60),
+             divide_int(int_to_fixed_point(ready_threads), 60));
 }
 
 /* Updates the load_avg global variable with MLFQS MODE ON */
@@ -772,7 +785,8 @@ void update_recent_cpu(void)
     if (current_thread != idle_thread)
     {
       current_thread->recent_cpu = calculate_recent_cpu(current_thread->recent_cpu,
-        load_average, current_thread->nice);
+                                                        load_average,
+                                                        current_thread->nice);
     }
   }
 }
@@ -790,7 +804,8 @@ void update_priority(void)
     struct thread *current_thread = list_entry(e, struct thread, allelem);
     if (current_thread != idle_thread)
     {
-      current_thread->priority = calculate_priority(current_thread->recent_cpu, current_thread->nice);
+      current_thread->priority = calculate_priority(current_thread->recent_cpu,
+                                                    current_thread->nice);
     }
   }
 }

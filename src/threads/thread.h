@@ -149,6 +149,9 @@ bool comp_priority(const struct list_elem *a,
                   const struct list_elem *b,
                   void *aux );
 
+/* Helper function gets a thread from the thread member list_elem 'elem' */
+struct thread* thread_get_thread(const struct list_elem*);
+
 bool thread_is_highest_priority(void);
 int thread_get_priority (void);
 int thread_get_highest_priority(void);
