@@ -65,22 +65,29 @@ released and the thread no longer has the highest priority.
 >> briefly explain how this works.
 
       ___         ___         ___
-     |   |[35]   |   |33:[35]|   |31:33:[35]
-     | B |------>| A |------>| M |
-     |___|       |___|       |___|
-       |           |....|L1|---|
+     |   |[35]   |   |33:[35]|   |31:33:[35]      -->  Dependent on
+     | B |------>| A |------>| M |                ---  Acquired
+     |___|       |___|       |___|                ...  Attempting to Acquire
+       |           |....|L1|---|                  [n]  Effective Priority
        |....|L2|---|
 
-The above diagram illustrates a situation where a main thread, denoted as M
-creates a thread A which has priority 33, acquires lock L2 and is looking to
-acquire lock L1, a resource that M holds. As such, thread A donates its priority
-to M, raising its effective priority to 33, thread A can now be blocked and wait
-until M relinquishes ownership of L1.
+The above diagram illustrates a situation with three threads, M, A and B.
+M, of priority 31 is the initial thread running, it acquires a lock L1 by
+calling lock_acquire(L1). A thread A of priority 33 is created, and it attempts
+to acquire L1 by calling lock_acquire(), where it is unable to acquire L1 as it
+is held by M. Thread A sets its dependent_on member to point to M, adds itself
+to M's dependent_list and puts itself into L1's waiters list ordered by
+priority. Thread A then calls thread_donate_priority() on thread M to donate its
+priority to M, within the call, thread A checks to see if M's effective priority
+is lower than its, and if applicable, donate its effective priority to M,
+boosting M's effective priority to 33.
 
-A thread, B is then created, which has priority 35, this thread looks to acquire
-L2, but is unable to do so, as such it dontes its priority to A, raising its
-effective priority to 35, it then checks and sees that A is 'depedent on' M, and
-donates its prority to M also, artificially raising its effective priority.
+A thread, B is then created, which has priority 35, this thread calls
+lock_acquire on L2, but is unable acquire it, as L2 is held by A, it therefore
+calls thread_donate_priority() on A to donate its priority to A, raising its
+effective priority to 35, it then recursively calls thread_donate_priority() on
+A's dependent_on if it is not NULL. It then donates its prority to M also,
+artificially raising its effective priority to 35.
 
 The priority donation process works recursively to traverse through the chain of
 dependencies via the dependent_on member of a struct thread, and donates its
@@ -121,11 +128,11 @@ iii.  Priority scheduling is implemented for condition variables by changing the
 
 After lock_acquire() is invoked by a thread A, it first checks if the semaphore
 contained in the lock can be downed by using the function sema_try_down(). If
-it fails to do so, it signifies that the lock is already obtained by another
-thread B. In this case, the dependent_on member of thread A is set to thread B,
-and thread A is inserted into the dependent_list of thread B, which is a list
-of threads that seek to gain access to the resources owned by thread B. In
-addition, dependent_list is an ordered list, which ensures that thread A's
+it fails to do so, it signifies that the lock has already been obtained by
+another thread B. In this case, the dependent_on member of thread A is set to
+thread B, and thread A is inserted into the dependent_list of thread B, which is
+a list of threads that seek to gain access to the resources owned by thread B.
+In addition, dependent_list is an ordered list, which ensures that thread A's
 effective priority can be acquired efficiently by getting the priority of the
 first thread in the list. Then, thread A is inserted into the waiting list
 of the semaphore in an ordered fashion. Next, it invokes the function 
@@ -160,7 +167,8 @@ sema_up is called to unblock thread B.
 >> Can you use a lock to avoid the race?
 
 Certainly, a lock member can be added to the thread, such that only the holder
-of said lock can call thread_set_priority() this this thread at any given time.
+of said lock can call thread_set_priority() to edit its priority at any given
+time.
 
 Assuming a thread A of LOW priority, which holds a lock that thread B of MED
 priority is trying to acquire, B thus donates its MED priority to A and blocks
