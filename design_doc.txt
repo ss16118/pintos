@@ -321,15 +321,15 @@ still kept in the ready_list which is sorted every time priority is updated.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0    	0	 0	 0	 31	 29	 27	     A
- 4		  4	 0 	 0	 30	 29	 27	     A
- 8		  8	 0	 0	 29	 29	 27	     A
-12		 12	 0	 0	 28	 29	 27	     B
-16	 	 12	 4	 0	 28	 28	 27	     A
-20		 16	 4	 0	 27	 28	 27	     B
-24		 16	 8	 0	 27	 27	 27	     A
-28		 20	 8	 0	 26	 27	 27	     B
-32		 20	12	 0	 26	 26	 27	     C
+ 0    	0	 0	 0	 63	 61	 59	     A
+ 4		  4	 0 	 0	 62	 61	 59	     A
+ 8		  8	 0	 0	 61	 61	 59	     A
+12		 12	 0	 0	 60	 61	 59	     B
+16	 	 12	 4	 0	 60	 60	 59	     A
+20		 16	 4	 0	 59	 60	 59	     B
+24		 16	 8	 0	 59	 59	 59	     A
+28		 20	 8	 0	 58	 59	 59	     B
+32		 20	12	 0	 58	 58	 59	     C
 When two threads have the same priority, the scheduler's behaviour is undefined
 by the specification. In our implementation, when two threads have the same
 priority, their relative position in the ready_list is kept unchanged. 
