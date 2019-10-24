@@ -32,8 +32,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-/* De-wraps condition-elem elems and compares the priority of the first element
-   of the waiters lists of each semaphore */
+
+static void lock_exchange_ownership(struct lock *lock,
+                                    struct thread *new_holder);
+
 static bool comp_cond_priority (const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux);
@@ -214,7 +216,7 @@ lock_acquire (struct lock *lock)
 
   if (!thread_mlfqs)
   {
-    while (!sema_try_down(&lock->semaphore))
+    while (lock->holder != thread_current() && !sema_try_down(&lock->semaphore))
     {
       /* 1. Set dependency
        * 2. Insert current thread into list of threads dependent on holder
@@ -267,6 +269,17 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
+/* Transfers ownership and dependency of lock to thread, used when releasing
+   a lock */
+static void lock_exchange_ownership(struct lock *lock,
+                                    struct thread *new_holder)
+{
+  lock->holder = new_holder;
+  list_remove(&new_holder->dependent_elem);
+  thread_change_dependencies(&lock->semaphore.waiters, new_holder);
+  thread_unblock(new_holder);
+}
+
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -282,16 +295,22 @@ lock_release (struct lock *lock)
   {
     enum intr_level old_level = intr_disable();
     list_sort(&lock->semaphore.waiters, &comp_priority, NULL);
-    struct thread *dependent_thread =
-                        thread_get_thread(list_begin(&lock->semaphore.waiters));
-    list_remove(&dependent_thread->dependent_elem);
-    thread_change_dependencies(&lock->semaphore.waiters, dependent_thread);
+    struct thread *dependent_thread = thread_get_thread(
+                                          list_pop_front(
+                                              &lock->semaphore.waiters));
+    lock_exchange_ownership(lock, dependent_thread);
     thread_current()->effective_priority = thread_get_highest_priority();
     intr_set_level(old_level);
+    if (!thread_is_highest_priority())
+    {
+      thread_yield();
+    }
   }
-
-  lock->holder = NULL;
-  sema_up (&lock->semaphore);
+  else
+  {
+    lock->holder = NULL;
+    sema_up (&lock->semaphore);
+  }
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -399,6 +418,8 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
+/* De-wraps condition-elem elems and compares the priority of the first element
+   of the waiters lists of each semaphore */
 static bool comp_cond_priority (const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux UNUSED)
