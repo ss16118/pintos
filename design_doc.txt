@@ -287,9 +287,6 @@ struct thread
 
 2.static variable:
 
-static int64_t load_average = 0;
-
-
 static int64_t load_average = 0;  /* defined in thread.c */
 
 int nice, int64_t recent_cpu are added to struct thread for the
