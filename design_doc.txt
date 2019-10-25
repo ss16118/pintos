@@ -51,7 +51,7 @@ through the chain of dependencies.
 
 This list elem is to be stored inside another thread's dependent list when it
 holds a resource that this thread possesses. This allows the depended thread to
-calulate its next priority based on threads dependent on it when releasing
+calculate its next priority based on threads dependent on it when releasing
 locks.
 
   struct list dependent_list;
@@ -71,6 +71,21 @@ released and the thread no longer has the highest priority.
        |           |....|L1|---|                  [n]  Effective Priority
        |....|L2|---|
 
+B.dependent_on:       A
+B.depenedent_list:    []
+B.effective_priority: 35
+B.priority:           35
+
+A.depdent_on:         M
+A.dependent_list:    [B]
+A.effective_priority: 35
+A.priority:           33
+
+M.dependent_on:      NULL
+M.dependent_list:    [A]
+M.effective_priority: 35
+M.priority:           31
+
 The above diagram illustrates a situation with three threads, M, A and B.
 M, of priority 31 is the initial thread running, it acquires a lock L1 by
 calling lock_acquire(L1). A thread A of priority 33 is created, and it attempts
@@ -86,7 +101,7 @@ A thread, B is then created, which has priority 35, this thread calls
 lock_acquire on L2, but is unable acquire it, as L2 is held by A, it therefore
 calls thread_donate_priority() on A to donate its priority to A, raising its
 effective priority to 35, it then recursively calls thread_donate_priority() on
-A's dependent_on if it is not NULL. It then donates its prority to M also,
+A's dependent_on if it is not NULL. It then donates its priority to M also,
 artificially raising its effective priority to 35.
 
 The priority donation process works recursively to traverse through the chain of
@@ -111,12 +126,12 @@ ii.   Priority scheduling is implemented for semaphores by first inserting
       threads into the waiters list ordered by their priorities when a thread
       attempts to down the semaphore. When the semaphore is brought up, it first
       sorts the waiters list by priority again, to account for any changes to
-      priorites due to priority donations, then unblocks the first thread in
+      priorities due to priority donations, then unblocks the first thread in
       list, which is the thread with the highest priority after sorting.
 
 iii.  Priority scheduling is implemented for condition variables by changing the
       condition signalling function cond_signal(), which wakes up waiters on the
-      conditions. Each waiter accomodates a list of threads that wait on that
+      conditions. Each waiter accommodates a list of threads that wait on that
       specific condition. Therefore by sorting the conditions by priority, of
       their highest priority waiting threads, we can ensure that the condition
       with the highest priority waiting thread wakes said thread up first.
@@ -211,12 +226,12 @@ priority.
 >> Why did you choose this design?  
 >> In what ways is it superior to another design you considered?
 
-Initially our design does not have either of the depedent_on and dependent_list
-members withing struct thread, priority donation was only handled when a thread
+Initially our design does not have either of the dependent_on and dependent_list
+members within struct thread, priority donation was only handled when a thread
 attempts to acquire a resource held by another thread. The first issue this
 initial design posed was that during priority donation, if thread A donates to
 thread B, but thread B is  dependent on thread C, under the initial design A
-would not be aware of the existance of C, or the need to donate to it, the
+would not be aware of the existence of C, or the need to donate to it, the
 responsibility to continue the chain of priority donations fell on B, which
 would be woken up and tried to donate to C. The amount of context switches
 required by the model was too much, and too unnecessarily expensive, therefore
@@ -232,7 +247,7 @@ dependent_list and dependent_elem member of the struct thread, in order to keep
 track of dependencies from the holder to the dependent thread.
 
 This design of a doubly linked thread dependency is the final design that we
-came up with, as due to its ability to traverse both ways in a depenedency
+came up with, as due to its ability to traverse both ways in a dependency
 chain, we are able to calculate effective priorities and achieve priority
 donations with a minimal amount of context switches, which are time expensive.
 
@@ -318,16 +333,17 @@ still kept in the ready_list which is sorted every time priority is updated.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0    	0	 0	 0	 63	 61	 59	     A
- 4		  4	 0 	 0	 62	 61	 59	     A
- 8		  8	 0	 0	 61	 61	 59	     A
-12		 12	 0	 0	 60	 61	 59	     B
-16	 	 12	 4	 0	 60	 60	 59	     A
-20		 16	 4	 0	 59	 60	 59	     B
-24		 16	 8	 0	 59	 59	 59	     A
-28		 20	 8	 0	 58	 59	 59	     B
-32		 20	12	 0	 58	 58	 59	     C
-36      20  12  4   58  58  58      A
+ 0      0   0   0  63  61  59      A
+ 4      4   0   0  62  61  59      A
+ 8      8   0   0	 61  61  59      A
+12     12   0   0  60  61  59      B
+16     12   4   0  60  60  59      A
+20     16   4   0  59  60  59      B
+24     16   8   0  59  59  59      A
+28     20   8   0  58  59  59      B
+32     20  12   0  58  58  59      C
+36     20  12   4  58  58  58      A
+
 When two threads have the same priority, the scheduler's behaviour is undefined
 by the specification. In our implementation, when two threads have the same
 priority, their relative position in the ready_list is kept unchanged. 
