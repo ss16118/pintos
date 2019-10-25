@@ -4,6 +4,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#include "../devices/shutdown.h"
+
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -25,7 +27,7 @@ syscall_handler (struct intr_frame *f UNUSED)
  */
 void halt(void)
 {
-  // TODO
+  shutdown_power_off()
 }
 
 
@@ -39,6 +41,9 @@ void halt(void)
 void exit(int status)
 {
   // TODO
+
+  printf("%s: exit(%d)\n", )
+
 }
 
 
@@ -56,7 +61,7 @@ pid_t exec(const char *cmd_line)
 {
   // TODO
 
-  return 0;
+  return -1;
 }
 
 
@@ -94,6 +99,13 @@ int wait(pid_t pid)
 
   return 0;
 }
+
+
+
+/************************************************************************
+ *                      File Related System Calls
+ ************************************************************************/
+
 
 /**
  * Creates a new file called file initially initial_size bytes in size.
