@@ -78,24 +78,32 @@ start_process (void *file_name_)
 
   // Push the actual arguments onto the stack
   for (int i = count - 1; i >= 0; i--) {
-    *--&if_.esp = *arguments[i];
+    if_.esp -= strlen(arguments[i]) * sizeof(char *);
+    *(char **) if_.esp = arguments[i];
   }
   // Null pointer sentinel
-  *--&if_.esp = STACK_SENTINEL;
+  if_.esp -= sizeof(STACK_SENTINEL);
+  *(uint8_t *) if_.esp = STACK_SENTINEL;
 
   // Push the pointers of the arguments onto the stack
   for (int i = count - 1; i >= 0; i--) {
-    *--&if_.esp = arguments[i];
+    if_.esp -= sizeof(char *);
+    *(char ***) if_.esp = &(arguments[i]);
   }
 
   // Push a pointer to the first pointer
-  *--&if_.esp = &arguments[0];
+  if_.esp -= sizeof(char **);
+  *(char **) if_.esp = arguments[0];
 
   // Push the number of arguments
-  *--&if_.esp = count;
+  if_.esp -= sizeof(int);
+  *(int *) if_.esp = count;
 
   // Push a fake return address
-  *--&if_.esp = STACK_SENTINEL;
+  if_.esp -= sizeof(STACK_SENTINEL);
+  *(uint8_t *) if_.esp = STACK_SENTINEL;
+
+  // hex_dump(0, if_.esp, 48, true);
 
   /* Load the executable. */
   success = load (file_name, &if_.eip, &if_.esp);

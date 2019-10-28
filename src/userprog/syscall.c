@@ -3,10 +3,23 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "pagedir.h"
 
 #include "../devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
+static bool is_valid_pointer(const void *uaddr);
+
+
+static bool is_valid_pointer(const void *uaddr) {
+  void *phys_addr = pagedir_get_page(thread_current()->pagedir, uaddr);
+  if (phys_addr == NULL) {
+    return false;
+  }
+  return is_user_vaddr(phys_addr);
+
+}
 
 void
 syscall_init (void) 
@@ -15,9 +28,68 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED)
+syscall_handler (struct intr_frame *f)
 {
-  // TODO: Need to pop the parameters off the interrupt stack frame
+
+  /* Checks if the stack pointer is valid before de-referencing */
+  int syscall_num;
+  if (!is_valid_pointer(f->esp))
+  {
+    syscall_num = *(int *) f->esp;
+  }
+  /* Invoke the corresponding system call function according to the
+     stack frame's stack pointer */
+  switch (syscall_num)
+  {
+    case SYS_HALT:
+
+      break;
+
+    case SYS_EXIT:
+
+      break;
+
+    case SYS_EXEC:
+
+      break;
+
+    case SYS_WAIT:
+
+      break;
+
+    case SYS_CREATE:
+
+      break;
+
+    case SYS_REMOVE:
+
+      break;
+
+    case SYS_FILESIZE:
+
+      break;
+
+    case SYS_READ:
+
+      break;
+
+    case SYS_WRITE:
+
+      break;
+
+    case SYS_SEEK:
+
+      break;
+
+    case SYS_TELL:
+
+      break;
+
+    case SYS_CLOSE:
+
+      break;
+  }
+
 
   printf ("system call!\n");
 
@@ -41,11 +113,13 @@ void halt(void)
  * indicate errors.
  * @param status: the exit status of the current user program.
  */
-void exit(int status)
+void exit(int status UNUSED)
 {
-  // TODO
+  while (true)
+  {
 
-  printf("%s: exit(%d)\n", )
+  }
+  // printf("%s: exit(%d)\n");
 
 }
 
@@ -60,7 +134,7 @@ void exit(int status)
  * @param cmd_line: name of the program to run.
  * @return pid of the new process's program.
  */
-pid_t exec(const char *cmd_line)
+pid_t exec(const char *cmd_line UNUSED)
 {
   // TODO
 
@@ -96,7 +170,7 @@ pid_t exec(const char *cmd_line)
  * @return: the status that the child process passed to exit.
  *
  */
-int wait(pid_t pid)
+int wait(pid_t pid UNUSED)
 {
   // TODO
 
@@ -117,7 +191,7 @@ int wait(pid_t pid)
  * @param initial_size: the initial size of the file in bytes.
  * @return: whether the file has been created successfully.
  */
-bool create(const char *file, unsigned initial_size)
+bool create(const char *file UNUSED, unsigned initial_size UNUSED)
 {
   // TODO
 
@@ -131,7 +205,7 @@ bool create(const char *file, unsigned initial_size)
  * @param file: name of the file to be deleted.
  * @return: whether the file has been deleted successfully.
  */
-bool remove(const char *file)
+bool remove(const char *file UNUSED)
 {
   // TODO
 
@@ -157,7 +231,7 @@ bool remove(const char *file)
  * @param file: name of the file to be opened.
  * @return: a non-negative file descriptor.
  */
-int open(const char *file)
+int open(const char *file UNUSED)
 {
   // TODO
 
@@ -170,7 +244,7 @@ int open(const char *file)
  * @param fd: the file open as fd.
  * @return: the size of the file in bytes.
  */
-int filesize(int fd)
+int filesize(int fd UNUSED)
 {
   // TODO
 
@@ -187,7 +261,7 @@ int filesize(int fd)
  * @param size: number of bytes to be read.
  * @return: number of bytes actually read.
  */
-int read(int fd, void *buffer, unsigned size)
+int read(int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED)
 {
   // TODO
 
@@ -209,7 +283,7 @@ int read(int fd, void *buffer, unsigned size)
  * @param size: number of bytes to be written.
  * @return: number of bytes actually written.
  */
-int write(int fd, const void *buffer, unsigned size)
+int write(int fd UNUSED, const void *buffer UNUSED, unsigned size UNUSED)
 {
   // TODO
 
@@ -228,7 +302,7 @@ int write(int fd, const void *buffer, unsigned size)
  * @param position: number of bytes from the beginning of the file which
  * the next byte will be read from or written to.
  */
-void seek(int fd, unsigned position)
+void seek(int fd UNUSED, unsigned position UNUSED)
 {
   // TODO
 }
@@ -239,7 +313,7 @@ void seek(int fd, unsigned position)
  * @param fd: the file open as fd.
  * @return: the position of the next byte to be read to or written from.
  */
-unsigned tell(int fd)
+unsigned tell(int fd UNUSED)
 {
   // TODO
 
@@ -252,7 +326,7 @@ unsigned tell(int fd)
  * all its open file descriptors, as if by calling this function for each one.
  * @param fd: the file open as fd.
  */
-void close(int fd)
+void close(int fd UNUSED)
 {
   // TODO
 }
