@@ -15,9 +15,12 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler (struct intr_frame *f UNUSED)
 {
+  // TODO: Need to pop the parameters off the interrupt stack frame
+
   printf ("system call!\n");
+
   thread_exit ();
 }
 
@@ -103,7 +106,7 @@ int wait(pid_t pid)
 
 
 /************************************************************************
- *                      File Related System Calls
+ *                      File Related System Calls                       *
  ************************************************************************/
 
 

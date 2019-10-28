@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define STACK_SENTINEL 0
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -50,15 +52,52 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *parameters = file_name_;
   struct intr_frame if_;
   bool success;
 
-  /* Initialize interrupt frame and load executable. */
+  /* Initialize interrupt frame. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  /* Tokenize the arguments and push them onto the interrupt frame according to
+     the start-up details */
+  char *file_name;
+  char *token, *save_ptr;
+  char **arguments;
+  int count = 0;
+
+  for (token = strtok_r(parameters, " ", &save_ptr); token != NULL;
+      token = strtok_r(NULL, " ", &save_ptr))
+  {
+    arguments[count++] = token;
+  }
+  file_name = arguments[0];
+
+  // Push the actual arguments onto the stack
+  for (int i = count - 1; i >= 0; i--) {
+    *--&if_.esp = *arguments[i];
+  }
+  // Null pointer sentinel
+  *--&if_.esp = STACK_SENTINEL;
+
+  // Push the pointers of the arguments onto the stack
+  for (int i = count - 1; i >= 0; i--) {
+    *--&if_.esp = arguments[i];
+  }
+
+  // Push a pointer to the first pointer
+  *--&if_.esp = &arguments[0];
+
+  // Push the number of arguments
+  *--&if_.esp = count;
+
+  // Push a fake return address
+  *--&if_.esp = STACK_SENTINEL;
+
+  /* Load the executable. */
   success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -88,6 +127,11 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (true)
+  {
+    // TODO
+  }
+
   return -1;
 }
 
@@ -437,7 +481,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;  /* Faking the set-up for a minimal stack*/
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
