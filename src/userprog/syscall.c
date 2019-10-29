@@ -33,7 +33,7 @@ syscall_handler (struct intr_frame *f)
 
   /* Checks if the stack pointer is valid before de-referencing */
   int syscall_num;
-  if (!is_valid_pointer(f->esp))
+  if (is_valid_pointer(f->esp))
   {
     syscall_num = *(int *) f->esp;
   }
@@ -42,31 +42,46 @@ syscall_handler (struct intr_frame *f)
   switch (syscall_num)
   {
     case SYS_HALT:
-
+      halt();
       break;
 
     case SYS_EXIT:
-
+      if (is_valid_pointer(f->esp + 1))
+      {
+        exit(*(int *) (f->esp + 1));
+      }
       break;
 
     case SYS_EXEC:
-
+      if (is_valid_pointer(f->esp + 1))
+      {
+        exec((char *) (f->esp + 1));
+      }
       break;
 
     case SYS_WAIT:
-
+      if (is_valid_pointer(f->esp + 1))
+      {
+        wait(* (int *) (f->esp + 1));
+      }
       break;
 
     case SYS_CREATE:
-
+      if (is_valid_pointer(f->esp + 1) && is_valid_pointer(f->esp + 2))
+      {
+        create((char *) (f->esp + 1), *(uint8_t *) (f->esp + 2));
+      }
       break;
 
     case SYS_REMOVE:
-
+      if (is_valid_pointer(f->esp + 1))
+      {
+        remove((char *) (f->esp + 1));
+      }
       break;
 
     case SYS_FILESIZE:
-
+      
       break;
 
     case SYS_READ:
