@@ -19,6 +19,8 @@
 #include "threads/vaddr.h"
 
 static uint8_t STACK_SENTINEL = 0;
+static int MAX_PARAM_NUM = 20;
+static int MAX_ARG_LEN = 20;
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -64,45 +66,52 @@ start_process (void *file_name_)
 
   /* Tokenize the arguments and push them onto the interrupt frame according to
      the start-up details */
-  char *file_name;
+  
   char *token, *save_ptr;
-  char **arguments;
+  char arguments[MAX_ARG_LEN][MAX_PARAM_NUM];
+  char *argument_addresses[MAX_PARAM_NUM];
   int count = 0;
-
+  
   for (token = strtok_r(parameters, " ", &save_ptr); token != NULL;
       token = strtok_r(NULL, " ", &save_ptr))
   {
-    arguments[count++] = token;
+    memcpy(arguments[count], token, strlen(token) + 1);
+    count++;
   }
-  file_name = arguments[0];
+
+  char *file_name = arguments[0];
 
   // Push the actual arguments onto the stack
   for (int i = count - 1; i >= 0; i--)
   {
-    if_.esp = (char *) if_.esp - strlen(arguments[i]) - 1;
-    memcpy(if_.esp, arguments[i], strlen(arguments[i]) + 1);
+    int arg_length = strlen(arguments[i]) + 1;
+    if_.esp = (char *) if_.esp - arg_length;
+    argument_addresses[i] = (char *) if_.esp;
+    memset(&if_.esp, arguments[i], sizeof(char) * arg_length);
   }
+
   // Align the stack pointer to be a multiple of 4
-  while ((int) if_.esp % 4 > 0)
-  {
-    if_.esp--;
-    *(uint8_t *) if_.esp = STACK_SENTINEL;
-  }
+  int offset = (int) if_.esp % 4;
+  if_.esp = (char *) if_.esp - offset;
+  memset(&if_.esp, STACK_SENTINEL, offset);
 
   // Push the pointers of the arguments onto the stack
   for (int i = count - 1; i >= 0; i--)
   {
     if_.esp = (char **) if_.esp - sizeof(char *);
-    *(char ***) if_.esp = &(arguments[i]);
+    memset(&if_.esp, (int) argument_addresses[count], sizeof(char *));
+    // *(char ***) if_.esp = &(arguments[i]);
   }
 
   // Push a pointer to the first pointer
   if_.esp = (char ***) if_.esp - sizeof(char **);
-  *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
+  memset(&if_.esp, (int) ((char **) if_.esp + sizeof(char *)), sizeof(char *));
+  // *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
 
   // Push the number of arguments
   if_.esp = (int *) if_.esp - sizeof(int);
-  *(int *) if_.esp = count;
+  memset(&if_.esp, count, sizeof(int));
+  // *(int *) if_.esp = count;
 
   // Push a fake return address
   if_.esp = (int *) if_.esp - sizeof(int);
@@ -140,6 +149,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (true) {
+
+  }
   return -1;
 }
 
