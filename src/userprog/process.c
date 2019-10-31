@@ -18,7 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define STACK_SENTINEL 0
+static uint8_t STACK_SENTINEL = 0;
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -77,33 +77,38 @@ start_process (void *file_name_)
   file_name = arguments[0];
 
   // Push the actual arguments onto the stack
-  for (int i = count - 1; i >= 0; i--) {
-    if_.esp -= strlen(arguments[i]) * sizeof(char *);
-    *(char **) if_.esp = arguments[i];
+  for (int i = count - 1; i >= 0; i--)
+  {
+    if_.esp = (char *) if_.esp - strlen(arguments[i]) - 1;
+    memcpy(if_.esp, arguments[i], strlen(arguments[i]) + 1);
   }
-  // Null pointer sentinel
-  if_.esp -= sizeof(STACK_SENTINEL);
-  *(uint8_t *) if_.esp = STACK_SENTINEL;
+  // Align the stack pointer to be a multiple of 4
+  while ((int) if_.esp % 4 > 0)
+  {
+    if_.esp--;
+    *(uint8_t *) if_.esp = STACK_SENTINEL;
+  }
 
   // Push the pointers of the arguments onto the stack
-  for (int i = count - 1; i >= 0; i--) {
-    if_.esp -= sizeof(char *);
+  for (int i = count - 1; i >= 0; i--)
+  {
+    if_.esp = (char **) if_.esp - sizeof(char *);
     *(char ***) if_.esp = &(arguments[i]);
   }
 
   // Push a pointer to the first pointer
-  if_.esp -= sizeof(char **);
-  *(char **) if_.esp = arguments[0];
+  if_.esp = (char ***) if_.esp - sizeof(char **);
+  *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
 
   // Push the number of arguments
-  if_.esp -= sizeof(int);
+  if_.esp = (int *) if_.esp - sizeof(int);
   *(int *) if_.esp = count;
 
   // Push a fake return address
-  if_.esp -= sizeof(STACK_SENTINEL);
-  *(uint8_t *) if_.esp = STACK_SENTINEL;
+  if_.esp = (int *) if_.esp - sizeof(int);
+  *(int *) if_.esp = STACK_SENTINEL;
 
-  // hex_dump(0, if_.esp, 48, true);
+  hex_dump(0, if_.esp, 48, true);
 
   /* Load the executable. */
   success = load (file_name, &if_.eip, &if_.esp);
@@ -135,11 +140,6 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (true)
-  {
-    // TODO
-  }
-
   return -1;
 }
 
@@ -177,6 +177,7 @@ process_activate (void)
   struct thread *t = thread_current ();
 
   /* Activate thread's page tables. */
+
   pagedir_activate (t->pagedir);
 
   /* Set thread's kernel stack for use in processing

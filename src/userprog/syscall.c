@@ -5,13 +5,20 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
-
+#include "kernel/console.h"
 #include "../devices/shutdown.h"
+
+#define WORD 4
+#define WRITE_TO_CONSOLE_FD 1
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
 
 
+/*
+ * Checks if the pointer is a valid pointer. It is implemented with
+ * pagedir_get_page() and is_user_vaddr().
+ */
 static bool is_valid_pointer(const void *uaddr) {
   void *phys_addr = pagedir_get_page(thread_current()->pagedir, uaddr);
   if (phys_addr == NULL) {
@@ -31,76 +38,108 @@ static void
 syscall_handler (struct intr_frame *f)
 {
 
-  /* Checks if the stack pointer is valid before de-referencing */
+  /* Checks if the stack pointer is valid before de-referencing. If it is
+   * not a valid pointer, exit the thread and release the resources
+   */
   int syscall_num;
   if (is_valid_pointer(f->esp))
   {
     syscall_num = *(int *) f->esp;
   }
+  else
+  {
+    thread_exit();
+  }
   /* Invoke the corresponding system call function according to the
      stack frame's stack pointer */
+
+  /* Checks if the addresses of the three arguments are valid, if not,
+   * call thread_exit() directly */
+  if (!(is_valid_pointer((int *) f->esp + 1) &&
+      is_valid_pointer((int *) f->esp + 2) &&
+      is_valid_pointer((int *) f->esp + 3)))
+  {
+    thread_exit();
+  }
+
+
   switch (syscall_num)
   {
     case SYS_HALT:
+
       halt();
+
       break;
 
     case SYS_EXIT:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        exit(*(int *) (f->esp + 1));
-      }
+
+      exit(*(int *) ((int *) f->esp + 1));
+
       break;
 
     case SYS_EXEC:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        exec((char *) (f->esp + 1));
-      }
+
+      exec(*(char **) ((char *) f->esp + WORD));
+
       break;
 
     case SYS_WAIT:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        wait(* (int *) (f->esp + 1));
-      }
+
+      wait(*(pid_t *) ((pid_t *) f->esp + 1));
+
       break;
 
     case SYS_CREATE:
-      if (is_valid_pointer(f->esp + 1) && is_valid_pointer(f->esp + 2))
-      {
-        create((char *) (f->esp + 1), *(uint8_t *) (f->esp + 2));
-      }
+
+      create(*(char **) ((char *) f->esp + WORD),
+             *(unsigned *) ((int *) f->esp + 2));
+
       break;
 
     case SYS_REMOVE:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        remove((char *) (f->esp + 1));
-      }
+
+      remove(*(char **) ((char *) f->esp + WORD));
+
       break;
 
     case SYS_FILESIZE:
-      
+
+      open(*(char **) ((char *) f->esp + WORD));
+
       break;
 
     case SYS_READ:
+
+      read(*(int *) ((int *) f->esp + 1),
+           *(void **) ((int *) f->esp + 2),
+           *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
     case SYS_WRITE:
 
+      write(*(int *) ((int *) f->esp + 1),
+           *(void **) ((int *) f->esp + 2),
+           *(unsigned *) ((int *) f->esp + 3));
+
       break;
 
     case SYS_SEEK:
+
+      seek(*(int *) ((int *) f->esp + 1),
+           *(unsigned *) ((int *) f->esp + 2));
 
       break;
 
     case SYS_TELL:
 
+      tell(*(int *) ((int *) f->esp + 1));
+
       break;
 
     case SYS_CLOSE:
+
+      close(*(int *) ((int *) f->esp + 1));
 
       break;
   }
@@ -130,12 +169,8 @@ void halt(void)
  */
 void exit(int status UNUSED)
 {
-  while (true)
-  {
-
-  }
-  // printf("%s: exit(%d)\n");
-
+  printf("%s: exit(%d)\n", thread_current()->name, status);
+  thread_exit();
 }
 
 
@@ -298,9 +333,12 @@ int read(int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED)
  * @param size: number of bytes to be written.
  * @return: number of bytes actually written.
  */
-int write(int fd UNUSED, const void *buffer UNUSED, unsigned size UNUSED)
+int write(int fd, const void *buffer, unsigned size)
 {
-  // TODO
+  if (fd == WRITE_TO_CONSOLE_FD)
+  {
+    putbuf((char *) buffer, size);
+  }
 
   return 0;
 }
