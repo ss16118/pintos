@@ -103,47 +103,6 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_FILESIZE:
-<<<<<<< HEAD
-      if (is_valid_pointer(f->esp + 1))
-      {
-        filesize(* (int *) (f->esp + 1));
-      }
-      break;
-
-    case SYS_READ:
-      if (is_valid_pointer(f->esp + 1) && is_valid_pointer(f->esp + 2) && is_valid_pointer(f->esp + 3))
-      {
-        read(* (int *) (f->esp + 1), (f->esp + 2), *(uint8_t *) (f->esp + 3));
-      }
-      break;
-
-    case SYS_WRITE:
-      if (is_valid_pointer(f->esp + 1) && is_valid_pointer(f->esp + 2) && is_valid_pointer(f->esp + 3))
-      {
-        write(* (int *) (f->esp + 1), (f->esp + 2), *(uint8_t *) (f->esp + 3));
-      }
-      break;
-
-    case SYS_SEEK:
-      if (is_valid_pointer(f->esp + 1) && is_valid_pointer(f->esp + 2))
-      {
-        seek(* (int *) (f->esp + 1), *(uint8_t *) (f->esp + 2));
-      }
-      break;
-
-    case SYS_TELL:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        tell(* (int *) (f->esp + 1));
-      }
-      break;
-
-    case SYS_CLOSE:
-      if (is_valid_pointer(f->esp + 1))
-      {
-        close(* (int *) (f->esp + 1));
-      }
-=======
 
       open(*(char **) ((char *) f->esp + WORD));
 
@@ -182,7 +141,6 @@ syscall_handler (struct intr_frame *f)
 
       close(*(int *) ((int *) f->esp + 1));
 
->>>>>>> refs/remotes/origin/master
       break;
   }
 
