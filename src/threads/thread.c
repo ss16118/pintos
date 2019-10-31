@@ -118,7 +118,6 @@ thread_start (void)
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
-
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
 }
@@ -246,7 +245,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  if (t->effective_priority > thread_current()->effective_priority)
+  if (t->effective_priority > thread_current()->effective_priority
+      && !thread_mlfqs)
   {
     thread_yield();
   }
@@ -279,7 +279,6 @@ thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
-
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
 }
@@ -367,9 +366,8 @@ thread_yield (void)
 {
   struct thread *cur = thread_current ();
   enum intr_level old_level;
-  
-  ASSERT (!intr_context ());
 
+  ASSERT (!intr_context ());
   old_level = intr_disable ();
   if (cur != idle_thread)
     list_insert_ordered(&ready_list, &cur->elem, &comp_priority, NULL);
