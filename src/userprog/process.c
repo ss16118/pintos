@@ -114,10 +114,11 @@ start_process (void *file_name_)
   // *(int *) if_.esp = count;
 
   // Push a fake return address
+  int *null_pointer = NULL;
   if_.esp = (int *) if_.esp - sizeof(int);
-  *(int *) if_.esp = STACK_SENTINEL;
-
-  hex_dump(0, if_.esp, 48, true);
+  memset(&if_.esp, null_pointer, sizeof(int *));
+  
+  hex_dump(0, &if_.esp, 1024, true);
 
   /* Load the executable. */
   success = load (file_name, &if_.eip, &if_.esp);

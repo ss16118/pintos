@@ -48,7 +48,7 @@ syscall_handler (struct intr_frame *f)
   }
   else
   {
-    thread_exit();
+    exit(-1);
   }
   /* Invoke the corresponding system call function according to the
      stack frame's stack pointer */
@@ -59,9 +59,8 @@ syscall_handler (struct intr_frame *f)
       is_valid_pointer((int *) f->esp + 2) &&
       is_valid_pointer((int *) f->esp + 3)))
   {
-    thread_exit();
+    exit(-1);
   }
-
 
   switch (syscall_num)
   {
