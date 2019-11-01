@@ -25,8 +25,8 @@ static bool is_valid_pointer(const void *uaddr) {
     return false;
   }
   return is_user_vaddr(phys_addr);
-
 }
+
 
 void
 syscall_init (void) 
@@ -37,30 +37,10 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
+  int syscall_num = *(int *) f->esp;
 
-  /* Checks if the stack pointer is valid before de-referencing. If it is
-   * not a valid pointer, exit the thread and release the resources
-   */
-  int syscall_num;
-  if (is_valid_pointer(f->esp))
-  {
-    syscall_num = *(int *) f->esp;
-  }
-  else
-  {
-    exit(-1);
-  }
   /* Invoke the corresponding system call function according to the
      stack frame's stack pointer */
-
-  /* Checks if the addresses of the three arguments are valid, if not,
-   * call thread_exit() directly */
-  if (!(is_valid_pointer((int *) f->esp + 1) &&
-      is_valid_pointer((int *) f->esp + 2) &&
-      is_valid_pointer((int *) f->esp + 3)))
-  {
-    exit(-1);
-  }
 
   switch (syscall_num)
   {
@@ -116,7 +96,6 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_WRITE:
-
       write(*(int *) ((int *) f->esp + 1),
            *(void **) ((int *) f->esp + 2),
            *(unsigned *) ((int *) f->esp + 3));
@@ -142,9 +121,6 @@ syscall_handler (struct intr_frame *f)
 
       break;
   }
-
-
-  printf ("system call!\n");
 
   thread_exit ();
 }

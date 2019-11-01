@@ -64,68 +64,12 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  /* Tokenize the arguments and push them onto the interrupt frame according to
-     the start-up details */
-  
-  char *token, *save_ptr;
-  char arguments[MAX_ARG_LEN][MAX_PARAM_NUM];
-  char *argument_addresses[MAX_PARAM_NUM];
-  int count = 0;
-  
-  for (token = strtok_r(parameters, " ", &save_ptr); token != NULL;
-      token = strtok_r(NULL, " ", &save_ptr))
-  {
-    memcpy(arguments[count], token, strlen(token) + 1);
-    count++;
-  }
-
-  char *file_name = arguments[0];
-
-  // Push the actual arguments onto the stack
-  for (int i = count - 1; i >= 0; i--)
-  {
-    int arg_length = strlen(arguments[i]) + 1;
-    if_.esp = (char *) if_.esp - arg_length;
-    argument_addresses[i] = (char *) if_.esp;
-    memset(&if_.esp, arguments[i], sizeof(char) * arg_length);
-  }
-
-  // Align the stack pointer to be a multiple of 4
-  int offset = (int) if_.esp % 4;
-  if_.esp = (char *) if_.esp - offset;
-  memset(&if_.esp, STACK_SENTINEL, offset);
-
-  // Push the pointers of the arguments onto the stack
-  for (int i = count - 1; i >= 0; i--)
-  {
-    if_.esp = (char **) if_.esp - sizeof(char *);
-    memset(&if_.esp, (int) argument_addresses[count], sizeof(char *));
-    // *(char ***) if_.esp = &(arguments[i]);
-  }
-
-  // Push a pointer to the first pointer
-  if_.esp = (char ***) if_.esp - sizeof(char **);
-  memset(&if_.esp, (int) ((char **) if_.esp + sizeof(char *)), sizeof(char *));
-  // *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
-
-  // Push the number of arguments
-  if_.esp = (int *) if_.esp - sizeof(int);
-  memset(&if_.esp, count, sizeof(int));
-  // *(int *) if_.esp = count;
-
-  // Push a fake return address
-  int *null_pointer = NULL;
-  if_.esp = (int *) if_.esp - sizeof(int);
-  memset(&if_.esp, null_pointer, sizeof(int *));
-  
-  hex_dump(0, &if_.esp, 1024, true);
-
   /* Load the executable. */
-  success = load (file_name, &if_.eip, &if_.esp);
-
+  success = load (parameters, &if_.eip, &if_.esp);
+  hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  palloc_free_page (parameters);
+  if (!success)
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -261,7 +205,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *file_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -368,7 +312,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name))
     goto done;
 
   /* Start address. */
@@ -493,7 +437,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, char *parameters)
 {
   uint8_t *kpage;
   bool success = false;
@@ -507,6 +451,67 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+  /* Tokenize the arguments and push them onto the interrupt frame according to
+     the start-up details */
+  char *token, *save_ptr;
+  char arguments[MAX_PARAM_NUM][MAX_ARG_LEN];
+  char *argument_addresses[MAX_PARAM_NUM];
+  int count = 0;
+
+  for (token = strtok_r(parameters, " ", &save_ptr); token != NULL;
+       token = strtok_r(NULL, " ", &save_ptr))
+  {
+    memcpy(arguments[count], token, strlen(token) + 1);
+    count++;
+  }
+
+  // Push the actual arguments onto the stack
+  for (int i = count - 1; i >= 0; i--)
+  {
+    int arg_length = strlen(arguments[i]) + 1;
+    *esp -= arg_length;
+    argument_addresses[i] = (char *) *esp;
+    memcpy(*esp, arguments[i], sizeof(char) * arg_length);
+  }
+  hex_dump(PHYS_BASE -32, *esp, 32, true);
+
+  // Align the stack pointer to be a multiple of 4
+  int offset = -((int) *esp) % 4;
+  *esp -= offset;
+  memset(*esp, STACK_SENTINEL, offset);
+  hex_dump(PHYS_BASE -32, *esp, 32, true);
+
+  // Push 4 bytes of 0 onto the stack
+  *esp -= sizeof(int);
+  memset(*esp, STACK_SENTINEL, sizeof(int));
+  hex_dump(PHYS_BASE -32, *esp, 32, true);
+
+  // Push the pointers of the arguments onto the stack
+  for (int i = count - 1; i >= 0; i--)
+  {
+    *esp -= sizeof(char *);
+    memcpy(*esp, &argument_addresses[i], sizeof(char *));
+  }
+
+  // Push a pointer to the first pointer
+  *esp -= sizeof(char **);
+  void *argv = *esp + sizeof(char *);
+  memcpy(*esp, &argv, sizeof(char **));
+  // *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
+  printf("\n");
+  hex_dump(PHYS_BASE -32, *esp, 32, true);
+
+  // Push the number of arguments
+  *esp -= sizeof(int);
+  memset(*esp, count - 1, sizeof(int));
+  // *(int *) if_.esp = count;
+
+  // Push a fake return address
+  int *null_pointer = NULL;
+  *esp -= sizeof(int);
+  memset(*esp, null_pointer, sizeof(int *));
+  hex_dump(PHYS_BASE -32, *esp, 32, true);
   return success;
 }
 
