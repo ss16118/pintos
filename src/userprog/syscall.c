@@ -9,7 +9,6 @@
 #include "../devices/shutdown.h"
 
 #define WORD 4
-#define WRITE_TO_CONSOLE_FD 1
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
@@ -121,8 +120,6 @@ syscall_handler (struct intr_frame *f)
 
       break;
   }
-
-  thread_exit ();
 }
 
 /**
@@ -142,9 +139,14 @@ void halt(void)
  * indicate errors.
  * @param status: the exit status of the current user program.
  */
-void exit(int status UNUSED)
+void exit(int status)
 {
   printf("%s: exit(%d)\n", thread_current()->name, status);
+
+  /* Up the semaphore so that its parent can start running */
+  // sema_up(&thread_current()->parent->wait_for_child);
+  thread_unblock(thread_current()->parent);
+
   thread_exit();
 }
 
@@ -310,7 +312,7 @@ int read(int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
-  if (fd == WRITE_TO_CONSOLE_FD)
+  if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
   }

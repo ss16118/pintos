@@ -66,7 +66,7 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-  hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
+  // hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
   /* If load failed, quit. */
   palloc_free_page (parameters);
   if (!success)
@@ -94,9 +94,11 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (true) {
-
-  }
+  /* Blocks itself until its child finishes executing*/
+  // sema_down(&thread_current()->wait_for_child);
+  enum intr_level old_level = intr_disable();
+  thread_block();
+  intr_set_level(old_level);
   return -1;
 }
 
@@ -474,18 +476,18 @@ setup_stack (void **esp, char *parameters)
     argument_addresses[i] = (char *) *esp;
     memcpy(*esp, arguments[i], sizeof(char) * arg_length);
   }
-  hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Align the stack pointer to be a multiple of 4
   int offset = -((int) *esp) % 4;
   *esp -= offset;
   memset(*esp, STACK_SENTINEL, offset);
-  hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push 4 bytes of 0 onto the stack
   *esp -= sizeof(int);
   memset(*esp, STACK_SENTINEL, sizeof(int));
-  hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push the pointers of the arguments onto the stack
   for (int i = count - 1; i >= 0; i--)
@@ -499,19 +501,22 @@ setup_stack (void **esp, char *parameters)
   void *argv = *esp + sizeof(char *);
   memcpy(*esp, &argv, sizeof(char **));
   // *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
-  printf("\n");
-  hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // printf("\n");
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push the number of arguments
   *esp -= sizeof(int);
-  memset(*esp, count - 1, sizeof(int));
+  memset(*esp, count, sizeof(uint8_t));
+  // printf("\n");
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
   // *(int *) if_.esp = count;
 
   // Push a fake return address
   int *null_pointer = NULL;
   *esp -= sizeof(int);
   memset(*esp, null_pointer, sizeof(int *));
-  hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // printf("\n");
+  // hex_dump(PHYS_BASE -32, *esp, 32, true);
   return success;
 }
 

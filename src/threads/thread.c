@@ -240,6 +240,11 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+#ifdef USERPROG
+  /* Set the new thread's parent to the current thread */
+  t->parent = thread_current();
+#endif
+
   intr_set_level (old_level);
 
   /* Add to run queue. */
