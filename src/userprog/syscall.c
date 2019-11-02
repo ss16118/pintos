@@ -19,11 +19,11 @@ static bool is_valid_pointer(const void *uaddr);
  * pagedir_get_page() and is_user_vaddr().
  */
 static bool is_valid_pointer(const void *uaddr) {
-  void *phys_addr = pagedir_get_page(thread_current()->pagedir, uaddr);
-  if (phys_addr == NULL) {
-    return false;
+  if (is_user_vaddr(uaddr) && uaddr != NULL)
+  {
+    return pagedir_get_page(thread_current()->pagedir, uaddr) != NULL;
   }
-  return is_user_vaddr(phys_addr);
+  return false;
 }
 
 
@@ -36,11 +36,21 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  int syscall_num = *(int *) f->esp;
+  /* If the pointers are not valid, exit process directly */
+  // PANIC("syscall num :%d\n", * (int *) f->esp);
+  if (!(is_valid_pointer(f->esp) && 
+        is_valid_pointer((int *) f->esp + 1) &&
+        is_valid_pointer((int *) f->esp + 2) &&
+        is_valid_pointer((int *) f->esp + 3)))
+  {
+    exit(-1);
+  }
 
   /* Invoke the corresponding system call function according to the
      stack frame's stack pointer */
 
+  int syscall_num = *(int *) f->esp;
+  
   switch (syscall_num)
   {
     case SYS_HALT:
