@@ -3,7 +3,7 @@
 
 #include "threads/thread.h"
 
-#define MAX_PARAM_NUM 20
+#define MAX_PARAM_NUM 25
 #define MAX_ARG_LEN 20
 
 tid_t process_execute (const char *file_name);

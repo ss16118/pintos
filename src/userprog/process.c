@@ -19,8 +19,6 @@
 #include "threads/vaddr.h"
 
 static uint8_t STACK_SENTINEL = 0;
-static int MAX_PARAM_NUM = 20;
-static int MAX_ARG_LEN = 20;
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -30,7 +28,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *parameters) 
 {
   char *fn_copy;
   tid_t tid;
@@ -40,9 +38,11 @@ process_execute (const char *file_name)
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy, parameters, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
+  char *temp_ptr;
+  char *file_name = strtok_r(parameters, " ", &temp_ptr);
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -218,7 +218,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *parameters, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -232,6 +232,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
+  char *temp_ptr;
+  char *temp_params[MAX_ARG_LEN * MAX_PARAM_NUM];
+  memcpy(temp_params, parameters, strlen(parameters) + 1);
+  char *file_name = strtok_r(temp_params, " ", &temp_ptr);
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -314,7 +319,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, file_name))
+  if (!setup_stack (esp, parameters))
     goto done;
 
   /* Start address. */
@@ -460,7 +465,6 @@ setup_stack (void **esp, char *parameters)
   char arguments[MAX_PARAM_NUM][MAX_ARG_LEN];
   char *argument_addresses[MAX_PARAM_NUM];
   int count = 0;
-
   for (token = strtok_r(parameters, " ", &save_ptr); token != NULL;
        token = strtok_r(NULL, " ", &save_ptr))
   {
@@ -516,7 +520,7 @@ setup_stack (void **esp, char *parameters)
   *esp -= sizeof(int);
   memset(*esp, null_pointer, sizeof(int *));
   // printf("\n");
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
+  // hex_dump(PHYS_BASE - 180, *esp, 180, true);
   return success;
 }
 
