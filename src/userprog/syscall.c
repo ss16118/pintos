@@ -8,6 +8,8 @@
 #include "kernel/console.h"
 #include "../devices/shutdown.h"
 
+#include "filesys/filesys.h"
+
 #define WORD 4
 
 static void syscall_handler (struct intr_frame *);
@@ -79,9 +81,8 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_CREATE:
 
-      create(*(char **) ((char *) f->esp + WORD),
-             *(unsigned *) ((int *) f->esp + 2));
-
+      f->eax = create(*(char **) ((char *) f->esp + WORD),
+                      *(unsigned *) ((int *) f->esp + 2));
       break;
 
     case SYS_REMOVE:
@@ -228,10 +229,16 @@ int wait(pid_t pid UNUSED)
  * @param initial_size: the initial size of the file in bytes.
  * @return: whether the file has been created successfully.
  */
-bool create(const char *file UNUSED, unsigned initial_size UNUSED)
+bool create(const char *file, unsigned initial_size)
 {
-  // TODO
-
+  if (!is_valid_pointer(file))
+  {
+    exit(-1);
+  }
+  if (strcmp(file, "") != 0)
+  {
+    return filesys_create(file, initial_size);
+  }
   return false;
 }
 
@@ -268,10 +275,12 @@ bool remove(const char *file UNUSED)
  * @param file: name of the file to be opened.
  * @return: a non-negative file descriptor.
  */
-int open(const char *file UNUSED)
+int open(const char *file)
 {
-  // TODO
-
+  if (!is_valid_pointer(file))
+  {
+    exit(-1);
+  }
   return 2;
 }
 
