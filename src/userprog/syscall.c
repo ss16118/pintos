@@ -251,8 +251,14 @@ bool create(const char *file, unsigned initial_size)
  */
 bool remove(const char *file UNUSED)
 {
-  // TODO
-
+  if (!is_valid_pointer(file))
+  {
+    exit(-1);
+  }
+  if (strcmp(file, "") != 0)
+  {
+    return filesys_remove(file);
+  }
   return false;
 }
 
@@ -293,7 +299,6 @@ int open(const char *file)
 int filesize(int fd UNUSED)
 {
   // TODO
-
   return 0;
 }
 
