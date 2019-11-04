@@ -107,16 +107,16 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_FILESIZE:
-
-      f->eax = filesize(*(int *) f->esp + 1);
+    
+      f->eax = filesize(*(int *) ((int *) f->esp + 1));
 
       break;
 
     case SYS_READ:
 
       f->eax = read(*(int *) ((int *) f->esp + 1),
-               *(void **) ((int *) f->esp + 2),
-               *(unsigned *) ((int *) f->esp + 3));
+                    *(void **) ((int *) f->esp + 2),
+                    *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
