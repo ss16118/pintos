@@ -1,4 +1,6 @@
 #include <user/syscall.h>
+#include <hash.h>
+
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
@@ -10,6 +12,13 @@ pid_t exec(const char *cmd_line);
 int wait(pid_t pid);
 bool creat(const char *file, unsigned initial_size);
 bool remove(const char *file);
+
+struct file_list_elem
+{
+    int fd;
+    struct file *file;
+    struct list_elem elem;
+};
 
 int open(const char *file);
 int filesize(int fd);

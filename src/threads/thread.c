@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #include "threads/fixed-point.h"
 #include "devices/timer.h"
+#include "../userprog/syscall.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -637,6 +638,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->wake_time = SLEEP_DEFAULT;
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
+  #ifdef USERPROG
+  list_init(&t->files);
+  #endif
   t->magic = THREAD_MAGIC; 
 
   /* The new thread's nice is inherited if it has a parent thread, else it is

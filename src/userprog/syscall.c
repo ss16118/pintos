@@ -1,19 +1,28 @@
 #include "userprog/syscall.h"
+
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <limits.h>
+#include <string.h>
+
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
 #include "kernel/console.h"
-#include "../devices/shutdown.h"
+#include "devices/shutdown.h"
+#include "devices/input.h"
 
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
 #define WORD 4
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
+static int file_desc_count = 2;
+
+static struct file *get_file_from_fd(int fd);
 
 
 /*
@@ -87,21 +96,27 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_REMOVE:
 
-      remove(*(char **) ((char *) f->esp + WORD));
+      f->eax = remove(*(char **) ((char *) f->esp + WORD));
+
+      break;
+
+    case SYS_OPEN:
+
+      f->eax = open(*(char **) ((char *) f->esp + WORD));
 
       break;
 
     case SYS_FILESIZE:
 
-      open(*(char **) ((char *) f->esp + WORD));
+      f->eax = filesize(*(int *) f->esp + 1);
 
       break;
 
     case SYS_READ:
 
-      read(*(int *) ((int *) f->esp + 1),
-           *(void **) ((int *) f->esp + 2),
-           *(unsigned *) ((int *) f->esp + 3));
+      f->eax = read(*(int *) ((int *) f->esp + 1),
+               *(void **) ((int *) f->esp + 2),
+               *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
@@ -249,7 +264,7 @@ bool create(const char *file, unsigned initial_size)
  * @param file: name of the file to be deleted.
  * @return: whether the file has been deleted successfully.
  */
-bool remove(const char *file UNUSED)
+bool remove(const char *file)
 {
   if (!is_valid_pointer(file))
   {
@@ -282,23 +297,59 @@ bool remove(const char *file UNUSED)
  * @return: a non-negative file descriptor.
  */
 int open(const char *file)
-{
+{  
   if (!is_valid_pointer(file))
   {
     exit(-1);
   }
-  return 2;
+  struct file *f = filesys_open(file);
+  if (f != NULL)
+  {
+    int fd = file_desc_count++;
+    struct file_list_elem *fl = malloc(sizeof(struct file_list_elem *));
+    fl->fd = fd;
+    fl->file = f;
+    list_push_back(&thread_current()->files, &fl->elem);
+    
+    return fd;
+  }
+  return -1;
 }
 
+static struct file *get_file_from_fd(int fd)
+{
+  enum intr_level old_level = intr_disable();
+  if (!list_empty(&thread_current()->files))
+  {
+    for (struct list_elem *e = list_begin(&thread_current()->files);
+        e != list_end(&thread_current()->files);
+        e = list_next(e))
+    {
+      struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
+      // PANIC("fd count: %d fd required %d fd %d", file_desc_count, fd, fl->fd);
+      if (fl != NULL && fl->fd == fd)
+      {
+        intr_set_level(old_level);
+        return fl->file;
+      }
+    }
+  }
+  intr_set_level(old_level);
+  return NULL;
+}
 
 /**
  * Returns the size, in bytes, of the file open as fd.
  * @param fd: the file open as fd.
  * @return: the size of the file in bytes.
  */
-int filesize(int fd UNUSED)
+int filesize(int fd)
 {
-  // TODO
+  struct file *f = get_file_from_fd(fd);
+  if (f != NULL) 
+  {
+    return file_length(f);
+  }
   return 0;
 }
 
@@ -312,11 +363,28 @@ int filesize(int fd UNUSED)
  * @param size: number of bytes to be read.
  * @return: number of bytes actually read.
  */
-int read(int fd UNUSED, void *buffer UNUSED, unsigned size UNUSED)
+int read(int fd, void *buffer, unsigned size)
 {
-  // TODO
-
-  return 0;
+  if (fd > 1)
+  {
+    struct file *f = get_file_from_fd(fd);
+    if (f != NULL)
+    {
+      return file_read(f, buffer, size);
+    }
+  }
+  else if (fd == 0)
+  {
+    unsigned char_count = 0;
+    while (char_count < size)
+    {
+      buffer = (char *) buffer + 1;
+      memset(buffer, input_getc(), sizeof(uint8_t));
+      char_count++;
+    }
+    return size;
+  }
+  return -1;
 }
 
 

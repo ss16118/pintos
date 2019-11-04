@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -101,7 +102,10 @@ struct thread
     int nice;                           /* Nice value of the thread*/
     int64_t recent_cpu;                 /* recent_cpu value of the thread */
 
+
 #ifdef USERPROG
+    struct list files;                 /* List of files that have been opened by the 
+                                           current thread*/
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent;              /* Current thread's parent thread */

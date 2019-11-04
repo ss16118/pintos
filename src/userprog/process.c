@@ -66,6 +66,8 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
+  // list_init(&thread_current()->files);
+
   // hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
   /* If load failed, quit. */
   palloc_free_page (parameters);
@@ -519,9 +521,10 @@ setup_stack (void **esp, char *parameters)
   int *null_pointer = NULL;
   *esp -= sizeof(int);
   memset(*esp, null_pointer, sizeof(int *));
+
   // printf("\n");
   // hex_dump(PHYS_BASE - 180, *esp, 180, true);
-  return success;
+  return (success && (*esp > BASE_LINE));
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
