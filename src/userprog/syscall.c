@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
@@ -21,9 +22,6 @@
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
 static int file_desc_count = 2;
-
-static struct file *get_file_from_fd(int fd);
-
 
 /*
  * Checks if the pointer is a valid pointer. It is implemented with
@@ -170,7 +168,18 @@ void exit(int status)
 {
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
-  /* Frees all the memory occupied by the file descriptors */
+  /* Frees all the memory occupied by the file descriptors in
+     struct thread */
+  if (!list_empty(&thread_current()->files))
+  {
+    struct list_elem *e = list_begin(&thread_current()->files);
+    while (e != list_end(&thread_current()->files))
+    {
+      struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
+      e = list_next(e);
+      free(fl);
+    }
+  }
 
   /* Up the semaphore so that its parent can start running */
   // sema_up(&thread_current()->parent->wait_for_child);
@@ -319,6 +328,12 @@ int open(const char *file)
   return -1;
 }
 
+/**
+ * Retrieves the file_list_elem wrapper that contains the 
+ * file pointer given the file's file descriptor. Returns
+ * NULL if the file searched for does not exist in the
+ * list.
+ **/
 static struct file_list_elem *get_file_elem_from_fd(int fd)
 {
   enum intr_level old_level = intr_disable();
