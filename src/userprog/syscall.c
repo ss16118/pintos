@@ -137,7 +137,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_TELL:
 
-      tell(*(int *) ((int *) f->esp + 1));
+      f->eax = tell(*(int *) ((int *) f->esp + 1));
 
       break;
 
@@ -169,6 +169,8 @@ void halt(void)
 void exit(int status)
 {
   printf("%s: exit(%d)\n", thread_current()->name, status);
+
+  /* Frees all the memory occupied by the file descriptors */
 
   /* Up the semaphore so that its parent can start running */
   // sema_up(&thread_current()->parent->wait_for_child);
@@ -317,7 +319,7 @@ int open(const char *file)
   return -1;
 }
 
-static struct file *get_file_from_fd(int fd)
+static struct file_list_elem *get_file_elem_from_fd(int fd)
 {
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread_current()->files))
@@ -331,7 +333,7 @@ static struct file *get_file_from_fd(int fd)
       if (fl != NULL && fl->fd == fd)
       {
         intr_set_level(old_level);
-        return fl->file;
+        return fl;
       }
     }
   }
@@ -346,10 +348,10 @@ static struct file *get_file_from_fd(int fd)
  */
 int filesize(int fd)
 {
-  struct file *f = get_file_from_fd(fd);
-  if (f != NULL) 
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
   {
-    return file_length(f);
+    return file_length(fl->file);
   }
   return 0;
 }
@@ -373,10 +375,10 @@ int read(int fd, void *buffer, unsigned size)
 
   if (fd > 1)
   {
-    struct file *f = get_file_from_fd(fd);
-    if (f != NULL)
+    struct file_list_elem *fl = get_file_elem_from_fd(fd);
+    if (fl != NULL)
     {
-      return file_read(f, buffer, size);
+      return file_read(fl->file, buffer, size);
     }
   }
   else if (fd == 0)
@@ -420,10 +422,10 @@ int write(int fd, const void *buffer, unsigned size)
     return size;
   }
 
-  struct file *f = get_file_from_fd(fd);
-  if (f != NULL)
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
   {
-    return file_write(f, buffer, size);
+    return file_write(fl->file, buffer, size);
   }
   return 0;
 }
@@ -440,9 +442,13 @@ int write(int fd, const void *buffer, unsigned size)
  * @param position: number of bytes from the beginning of the file which
  * the next byte will be read from or written to.
  */
-void seek(int fd UNUSED, unsigned position UNUSED)
+void seek(int fd, unsigned position)
 {
-  // TODO
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    file_seek(fl->file, position);
+  }
 }
 
 /**
@@ -451,11 +457,14 @@ void seek(int fd UNUSED, unsigned position UNUSED)
  * @param fd: the file open as fd.
  * @return: the position of the next byte to be read to or written from.
  */
-unsigned tell(int fd UNUSED)
+unsigned tell(int fd)
 {
-  // TODO
-
-  return 0;
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    return file_tell(fl->file);
+  }
+  return -1;
 }
 
 
@@ -464,7 +473,12 @@ unsigned tell(int fd UNUSED)
  * all its open file descriptors, as if by calling this function for each one.
  * @param fd: the file open as fd.
  */
-void close(int fd UNUSED)
+void close(int fd)
 {
-  // TODO
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    list_remove(&fl->elem);
+    free(fl);
+  }
 }
