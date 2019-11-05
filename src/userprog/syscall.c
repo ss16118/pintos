@@ -18,6 +18,7 @@
 #include "filesys/file.h"
 
 #define WORD 4
+#define SYSCALL_ERROR -1
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
@@ -52,7 +53,7 @@ syscall_handler (struct intr_frame *f)
         is_valid_pointer((int *) f->esp + 2) &&
         is_valid_pointer((int *) f->esp + 3)))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
 
   /* Invoke the corresponding system call function according to the
@@ -121,8 +122,8 @@ syscall_handler (struct intr_frame *f)
     case SYS_WRITE:
 
       f->eax = write(*(int *) ((int *) f->esp + 1),
-          *(void **) ((int *) f->esp + 2),
-          *(unsigned *) ((int *) f->esp + 3));
+                     *(void **) ((int *) f->esp + 2),
+                     *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
@@ -142,6 +143,12 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
 
       close(*(int *) ((int *) f->esp + 1));
+
+      break;
+
+    default:
+
+      exit(SYSCALL_ERROR);
 
       break;
   }
@@ -199,11 +206,15 @@ void exit(int status)
  * @param cmd_line: name of the program to run.
  * @return pid of the new process's program.
  */
-pid_t exec(const char *cmd_line UNUSED)
+pid_t exec(const char *cmd_line)
 {
-  // TODO
 
-  return -1;
+  pid_t child_pid = process_execute(cmd_line);
+  if (child_pid != TID_ERROR)
+  {
+    int exit_status = process_wait(child_pid);
+  }
+  return child_pid;
 }
 
 
@@ -260,7 +271,7 @@ bool create(const char *file, unsigned initial_size)
 {
   if (!is_valid_pointer(file))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
   if (strcmp(file, "") != 0)
   {
@@ -280,7 +291,7 @@ bool remove(const char *file)
 {
   if (!is_valid_pointer(file))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
   if (strcmp(file, "") != 0)
   {
@@ -312,7 +323,7 @@ int open(const char *file)
 {  
   if (!is_valid_pointer(file))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
   struct file *f = filesys_open(file);
   if (f != NULL)
@@ -325,7 +336,7 @@ int open(const char *file)
     
     return fd;
   }
-  return -1;
+  return SYSCALL_ERROR;
 }
 
 /**
@@ -384,7 +395,7 @@ int read(int fd, void *buffer, unsigned size)
 {
   if (!is_valid_pointer(buffer))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
 
   if (fd > STDOUT_FILENO)
@@ -406,7 +417,7 @@ int read(int fd, void *buffer, unsigned size)
     }
     return size;
   }
-  return -1;
+  return SYSCALL_ERROR;
 }
 
 
@@ -428,7 +439,7 @@ int write(int fd, const void *buffer, unsigned size)
 {
   if (!is_valid_pointer(buffer))
   {
-    exit(-1);
+    exit(SYSCALL_ERROR);
   }
   if (fd == STDOUT_FILENO)
   {
@@ -478,7 +489,7 @@ unsigned tell(int fd)
   {
     return file_tell(fl->file);
   }
-  return -1;
+  return SYSCALL_ERROR;
 }
 
 
