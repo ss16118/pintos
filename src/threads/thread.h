@@ -105,7 +105,7 @@ struct thread
 
 #ifdef USERPROG
     struct list files;                 /* List of files that have been opened by the 
-                                           current thread*/
+                                           current thread */
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent;              /* Current thread's parent thread */

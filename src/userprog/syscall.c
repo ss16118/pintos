@@ -27,8 +27,9 @@ static int file_desc_count = 2;
  * Checks if the pointer is a valid pointer. It is implemented with
  * pagedir_get_page() and is_user_vaddr().
  */
-static bool is_valid_pointer(const void *uaddr) {
-  if (is_user_vaddr(uaddr) && uaddr != NULL)
+static bool is_valid_pointer(const void *uaddr)
+{
+  if (uaddr != NULL && is_user_vaddr(uaddr))
   {
     return pagedir_get_page(thread_current()->pagedir, uaddr) != NULL;
   }
@@ -46,7 +47,6 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   /* If the pointers are not valid, exit process directly */
-  // PANIC("syscall num :%d\n", * (int *) f->esp);
   if (!(is_valid_pointer(f->esp) && 
         is_valid_pointer((int *) f->esp + 1) &&
         is_valid_pointer((int *) f->esp + 2) &&
@@ -344,7 +344,6 @@ static struct file_list_elem *get_file_elem_from_fd(int fd)
         e = list_next(e))
     {
       struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
-      // PANIC("fd count: %d fd required %d fd %d", file_desc_count, fd, fl->fd);
       if (fl != NULL && fl->fd == fd)
       {
         intr_set_level(old_level);
@@ -388,7 +387,7 @@ int read(int fd, void *buffer, unsigned size)
     exit(-1);
   }
 
-  if (fd > 1)
+  if (fd > STDOUT_FILENO)
   {
     struct file_list_elem *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
@@ -396,7 +395,7 @@ int read(int fd, void *buffer, unsigned size)
       return file_read(fl->file, buffer, size);
     }
   }
-  else if (fd == 0)
+  else if (fd == STDIN_FILENO)
   {
     unsigned char_count = 0;
     while (char_count < size)
