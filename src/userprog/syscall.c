@@ -61,7 +61,7 @@ syscall_handler (struct intr_frame *f)
      stack frame's stack pointer */
 
   int syscall_num = *(int *) f->esp;
-  
+
   switch (syscall_num)
   {
     case SYS_HALT:
@@ -78,7 +78,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_EXEC:
 
-      exec(*(char **) ((char *) f->esp + WORD));
+      f->eax = exec(*(char **) ((char *) f->esp + WORD));
 
       break;
 
@@ -121,9 +121,10 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_WRITE:
-      write(*(int *) ((int *) f->esp + 1),
-           *(void **) ((int *) f->esp + 2),
-           *(unsigned *) ((int *) f->esp + 3));
+
+      f->eax = write(*(int *) ((int *) f->esp + 1),
+          *(void **) ((int *) f->esp + 2),
+          *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
@@ -365,6 +366,11 @@ int filesize(int fd)
  */
 int read(int fd, void *buffer, unsigned size)
 {
+  if (!is_valid_pointer(buffer))
+  {
+    exit(-1);
+  }
+
   if (fd > 1)
   {
     struct file *f = get_file_from_fd(fd);
@@ -404,11 +410,21 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
+  if (!is_valid_pointer(buffer))
+  {
+    exit(-1);
+  }
   if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
+    return size;
   }
 
+  struct file *f = get_file_from_fd(fd);
+  if (f != NULL)
+  {
+    return file_write(f, buffer, size);
+  }
   return 0;
 }
 
