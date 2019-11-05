@@ -365,6 +365,11 @@ int filesize(int fd)
  */
 int read(int fd, void *buffer, unsigned size)
 {
+  if (!is_valid_pointer(buffer))
+  {
+    exit(-1);
+  }
+
   if (fd > 1)
   {
     struct file *f = get_file_from_fd(fd);
