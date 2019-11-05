@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
@@ -21,9 +22,6 @@
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
 static int file_desc_count = 2;
-
-static struct file *get_file_from_fd(int fd);
-
 
 /*
  * Checks if the pointer is a valid pointer. It is implemented with
@@ -61,7 +59,7 @@ syscall_handler (struct intr_frame *f)
      stack frame's stack pointer */
 
   int syscall_num = *(int *) f->esp;
-  
+
   switch (syscall_num)
   {
     case SYS_HALT:
@@ -78,7 +76,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_EXEC:
 
-      exec(*(char **) ((char *) f->esp + WORD));
+      f->eax = exec(*(char **) ((char *) f->esp + WORD));
 
       break;
 
@@ -121,9 +119,10 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_WRITE:
-      write(*(int *) ((int *) f->esp + 1),
-           *(void **) ((int *) f->esp + 2),
-           *(unsigned *) ((int *) f->esp + 3));
+
+      f->eax = write(*(int *) ((int *) f->esp + 1),
+          *(void **) ((int *) f->esp + 2),
+          *(unsigned *) ((int *) f->esp + 3));
 
       break;
 
@@ -136,7 +135,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_TELL:
 
-      tell(*(int *) ((int *) f->esp + 1));
+      f->eax = tell(*(int *) ((int *) f->esp + 1));
 
       break;
 
@@ -168,6 +167,19 @@ void halt(void)
 void exit(int status)
 {
   printf("%s: exit(%d)\n", thread_current()->name, status);
+
+  /* Frees all the memory occupied by the file descriptors in
+     struct thread */
+  if (!list_empty(&thread_current()->files))
+  {
+    struct list_elem *e = list_begin(&thread_current()->files);
+    while (e != list_end(&thread_current()->files))
+    {
+      struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
+      e = list_next(e);
+      free(fl);
+    }
+  }
 
   /* Up the semaphore so that its parent can start running */
   // sema_up(&thread_current()->parent->wait_for_child);
@@ -316,7 +328,13 @@ int open(const char *file)
   return -1;
 }
 
-static struct file *get_file_from_fd(int fd)
+/**
+ * Retrieves the file_list_elem wrapper that contains the 
+ * file pointer given the file's file descriptor. Returns
+ * NULL if the file searched for does not exist in the
+ * list.
+ **/
+static struct file_list_elem *get_file_elem_from_fd(int fd)
 {
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread_current()->files))
@@ -330,7 +348,7 @@ static struct file *get_file_from_fd(int fd)
       if (fl != NULL && fl->fd == fd)
       {
         intr_set_level(old_level);
-        return fl->file;
+        return fl;
       }
     }
   }
@@ -345,10 +363,10 @@ static struct file *get_file_from_fd(int fd)
  */
 int filesize(int fd)
 {
-  struct file *f = get_file_from_fd(fd);
-  if (f != NULL) 
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
   {
-    return file_length(f);
+    return file_length(fl->file);
   }
   return 0;
 }
@@ -372,10 +390,10 @@ int read(int fd, void *buffer, unsigned size)
 
   if (fd > 1)
   {
-    struct file *f = get_file_from_fd(fd);
-    if (f != NULL)
+    struct file_list_elem *fl = get_file_elem_from_fd(fd);
+    if (fl != NULL)
     {
-      return file_read(f, buffer, size);
+      return file_read(fl->file, buffer, size);
     }
   }
   else if (fd == 0)
@@ -409,11 +427,21 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
+  if (!is_valid_pointer(buffer))
+  {
+    exit(-1);
+  }
   if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
+    return size;
   }
 
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    return file_write(fl->file, buffer, size);
+  }
   return 0;
 }
 
@@ -429,9 +457,13 @@ int write(int fd, const void *buffer, unsigned size)
  * @param position: number of bytes from the beginning of the file which
  * the next byte will be read from or written to.
  */
-void seek(int fd UNUSED, unsigned position UNUSED)
+void seek(int fd, unsigned position)
 {
-  // TODO
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    file_seek(fl->file, position);
+  }
 }
 
 /**
@@ -440,11 +472,14 @@ void seek(int fd UNUSED, unsigned position UNUSED)
  * @param fd: the file open as fd.
  * @return: the position of the next byte to be read to or written from.
  */
-unsigned tell(int fd UNUSED)
+unsigned tell(int fd)
 {
-  // TODO
-
-  return 0;
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    return file_tell(fl->file);
+  }
+  return -1;
 }
 
 
@@ -453,7 +488,12 @@ unsigned tell(int fd UNUSED)
  * all its open file descriptors, as if by calling this function for each one.
  * @param fd: the file open as fd.
  */
-void close(int fd UNUSED)
+void close(int fd)
 {
-  // TODO
+  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  if (fl != NULL)
+  {
+    list_remove(&fl->elem);
+    free(fl);
+  }
 }
