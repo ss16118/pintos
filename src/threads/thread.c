@@ -245,7 +245,6 @@ thread_create (const char *name, int priority,
   /* Set the new thread's parent to the current thread */
   t->parent = thread_current();
 #endif
-
   intr_set_level (old_level);
 
   /* Add to run queue. */
@@ -381,6 +380,37 @@ thread_yield (void)
   schedule ();
   intr_set_level (old_level);
 }
+
+/**
+ * Obtains the child thread of the current thread given its tid.
+ * Used in process.c.
+ **/
+struct thread *thread_get_child(tid_t child_tid)
+{
+  enum intr_level old_level = intr_disable();
+
+  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
+       e = list_next(e))
+  {
+    struct thread *current_thread = list_entry(e, struct thread, allelem);
+    if (current_thread != idle_thread && current_thread->tid == child_tid)
+    {
+      if (current_thread->parent == thread_current())
+      {
+        intr_set_level(old_level);
+        return current_thread;
+      }
+      else
+      {
+        intr_set_level(old_level);
+        return NULL;
+      }
+    }
+  }
+  intr_set_level(old_level);
+  return NULL;
+}
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -640,6 +670,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->dependent_list);
   #ifdef USERPROG
   list_init(&t->files);
+  sema_init(&t->wait_for_child, 0);
   #endif
   t->magic = THREAD_MAGIC; 
 

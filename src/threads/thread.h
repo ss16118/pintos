@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <hash.h>
 
+#include "synch.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -106,9 +108,11 @@ struct thread
 #ifdef USERPROG
     struct list files;                 /* List of files that have been opened by the 
                                            current thread */
+    struct semaphore wait_for_child;
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent;              /* Current thread's parent thread */
+    int child_exit_status;
 #endif
 
     /*
@@ -163,6 +167,8 @@ int thread_get_highest_priority(void);
 void thread_set_priority (int);
 void thread_donate_priority(struct thread *);
 void thread_change_dependencies(struct list *, struct thread *);
+
+struct thread *thread_get_child(tid_t child_tid);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

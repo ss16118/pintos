@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "syscall.h"
+
 static uint8_t STACK_SENTINEL = 0;
 
 static thread_func start_process NO_RETURN;
@@ -32,7 +34,6 @@ process_execute (const char *parameters)
 {
   char *fn_copy;
   tid_t tid;
-
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -66,13 +67,12 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-  // list_init(&thread_current()->files);
 
   // hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
   /* If load failed, quit. */
   palloc_free_page (parameters);
   if (!success)
-    thread_exit ();
+    exit(SYSCALL_ERROR);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -94,15 +94,19 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
   /* Blocks itself until its child finishes executing*/
-  // sema_down(&thread_current()->wait_for_child);
-  enum intr_level old_level = intr_disable();
-  thread_block();
-  intr_set_level(old_level);
-  return -1;
+  thread_current()->child_exit_status = TID_ERROR;
+  struct thread *child_thread = thread_get_child(child_tid);
+
+  if (child_thread != NULL)
+  {
+    sema_down(&thread_current()->wait_for_child);
+  }
+  return thread_current()->child_exit_status;
 }
+
 
 /* Free the current process's resources. */
 void
@@ -115,18 +119,18 @@ process_exit (void)
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL) 
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
-    }
+  {
+    /* Correct ordering here is crucial.  We must set
+       cur->pagedir to NULL before switching page directories,
+       so that a timer interrupt can't switch back to the
+       process page directory.  We must activate the base page
+       directory before destroying the process's page
+       directory, or our active page directory will be one
+       that's been freed (and cleared). */
+    cur->pagedir = NULL;
+    pagedir_activate (NULL);
+    pagedir_destroy (pd);
+  }
 }
 
 /* Sets up the CPU for running user code in the current

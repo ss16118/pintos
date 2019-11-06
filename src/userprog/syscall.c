@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "process.h"
 
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -18,7 +19,6 @@
 #include "filesys/file.h"
 
 #define WORD 4
-#define SYSCALL_ERROR -1
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
@@ -83,7 +83,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_WAIT:
 
-      wait(*(pid_t *) ((pid_t *) f->esp + 1));
+      f->eax = wait(*(pid_t *) ((pid_t *) f->esp + 1));
 
       break;
 
@@ -173,6 +173,7 @@ void halt(void)
  */
 void exit(int status)
 {
+  thread_current()->parent->child_exit_status = status;
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
   /* Frees all the memory occupied by the file descriptors in
@@ -189,9 +190,7 @@ void exit(int status)
   }
 
   /* Up the semaphore so that its parent can start running */
-  // sema_up(&thread_current()->parent->wait_for_child);
-  thread_unblock(thread_current()->parent);
-
+  sema_up(&thread_current()->parent->wait_for_child);
   thread_exit();
 }
 
@@ -208,12 +207,21 @@ void exit(int status)
  */
 pid_t exec(const char *cmd_line)
 {
-
-  pid_t child_pid = process_execute(cmd_line);
-  if (child_pid != TID_ERROR)
-  {
-    int exit_status = process_wait(child_pid);
+  if (!is_valid_pointer(cmd_line)) {
+    exit(SYSCALL_ERROR);
   }
+  char *temp_cmd_line[MAX_ARG_LEN * MAX_PARAM_NUM];
+  memcpy(temp_cmd_line, cmd_line, strlen(cmd_line) + 1);
+
+  pid_t child_pid = process_execute(temp_cmd_line);
+//  if (child_pid != TID_ERROR)
+//  {
+//    int exit_status = process_wait(child_pid);
+//    if (exit_status == SYSCALL_ERROR)
+//    {
+//      return SYSCALL_ERROR;
+//    }
+//  }
   return child_pid;
 }
 
@@ -246,11 +254,9 @@ pid_t exec(const char *cmd_line)
  * @return: the status that the child process passed to exit.
  *
  */
-int wait(pid_t pid UNUSED)
+int wait(pid_t pid)
 {
-  // TODO
-
-  return 0;
+  return process_wait(pid);
 }
 
 
