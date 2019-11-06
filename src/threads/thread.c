@@ -241,10 +241,11 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-#ifdef USERPROG
+  #ifdef USERPROG
   /* Set the new thread's parent to the current thread */
   t->parent = thread_current();
-#endif
+  #endif
+    
   intr_set_level (old_level);
 
   /* Add to run queue. */
@@ -669,6 +670,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   #ifdef USERPROG
+  sema_init(&t->exec_sema, 0);
   list_init(&t->files);
   sema_init(&t->wait_for_child, 0);
   #endif

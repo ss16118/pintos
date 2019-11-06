@@ -191,6 +191,11 @@ void exit(int status)
 
   /* Up the semaphore so that its parent can start running */
   sema_up(&thread_current()->parent->wait_for_child);
+    if (thread_current()->parent != NULL &&
+      !list_empty(&thread_current()->parent->exec_sema.waiters))
+  {
+    sema_up(&thread_current()->parent->exec_sema);
+  }
   thread_exit();
 }
 
@@ -210,18 +215,17 @@ pid_t exec(const char *cmd_line)
   if (!is_valid_pointer(cmd_line)) {
     exit(SYSCALL_ERROR);
   }
-  char *temp_cmd_line[MAX_ARG_LEN * MAX_PARAM_NUM];
+
+  char temp_cmd_line[MAX_ARG_LEN * MAX_PARAM_NUM];
   memcpy(temp_cmd_line, cmd_line, strlen(cmd_line) + 1);
 
   pid_t child_pid = process_execute(temp_cmd_line);
-//  if (child_pid != TID_ERROR)
-//  {
-//    int exit_status = process_wait(child_pid);
-//    if (exit_status == SYSCALL_ERROR)
-//    {
-//      return SYSCALL_ERROR;
-//    }
-//  }
+  
+  sema_down(&thread_current()->exec_sema);
+  if (child_pid == TID_ERROR || thread_current()->child_exit_status == TID_ERROR)
+  {
+    return SYSCALL_ERROR;
+  }
   return child_pid;
 }
 

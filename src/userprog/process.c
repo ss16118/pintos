@@ -46,7 +46,8 @@ process_execute (const char *parameters)
   char *file_name = strtok_r(parameters, " ", &temp_ptr);
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+
   return tid;
 }
 
@@ -67,12 +68,17 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-
-  // hex_dump(PHYS_BASE - 32, if_.esp, 32, true);
+  if (thread_current()->parent != NULL &&
+      !list_empty(&thread_current()->parent->exec_sema.waiters))
+  {
+    sema_up(&thread_current()->parent->exec_sema);
+  }
   /* If load failed, quit. */
   palloc_free_page (parameters);
   if (!success)
     exit(SYSCALL_ERROR);
+  else
+    thread_yield();
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
