@@ -2,6 +2,7 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 /* An open file. */
 struct file 
@@ -9,7 +10,9 @@ struct file
     struct inode *inode;        /* File's inode. */
     off_t pos;                  /* Current position. */
     bool deny_write;            /* Has file_deny_write() been called? */
+    struct lock flock;
   };
+
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
@@ -23,6 +26,7 @@ file_open (struct inode *inode)
       file->inode = inode;
       file->pos = 0;
       file->deny_write = false;
+      lock_init(&file->flock);
       return file;
     }
   else
@@ -68,8 +72,10 @@ file_get_inode (struct file *file)
 off_t
 file_read (struct file *file, void *buffer, off_t size) 
 {
+  lock_acquire(&file->flock);
   off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_read;
+  lock_release(&file->flock);
   return bytes_read;
 }
 
@@ -94,8 +100,10 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
 off_t
 file_write (struct file *file, const void *buffer, off_t size) 
 {
+  lock_acquire(&file->flock);
   off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
+  lock_release(&file->flock);
   return bytes_written;
 }
 
@@ -118,12 +126,14 @@ file_write_at (struct file *file, const void *buffer, off_t size,
 void
 file_deny_write (struct file *file) 
 {
+  lock_acquire(&file->flock);
   ASSERT (file != NULL);
   if (!file->deny_write) 
     {
       file->deny_write = true;
       inode_deny_write (file->inode);
     }
+  lock_release(&file->flock);
 }
 
 /* Re-enables write operations on FILE's underlying inode.
@@ -132,12 +142,14 @@ file_deny_write (struct file *file)
 void
 file_allow_write (struct file *file) 
 {
+  lock_acquire(&file->flock);
   ASSERT (file != NULL);
   if (file->deny_write) 
     {
       file->deny_write = false;
       inode_allow_write (file->inode);
     }
+  lock_release(&file->flock);
 }
 
 /* Returns the size of FILE in bytes. */
@@ -153,9 +165,11 @@ file_length (struct file *file)
 void
 file_seek (struct file *file, off_t new_pos)
 {
+  lock_acquire(&file->flock);
   ASSERT (file != NULL);
   ASSERT (new_pos >= 0);
   file->pos = new_pos;
+  lock_release(&file->flock);
 }
 
 /* Returns the current position in FILE as a byte offset from the
@@ -163,6 +177,8 @@ file_seek (struct file *file, off_t new_pos)
 off_t
 file_tell (struct file *file) 
 {
+  lock_acquire(&file->flock);
   ASSERT (file != NULL);
+  lock_release(&file->flock);
   return file->pos;
 }
