@@ -484,6 +484,10 @@ setup_stack (void **esp, char *parameters)
     count++;
   }
 
+  // Copy the filename into the executable_filename field in the struct thread
+  memcpy(thread_current()->executable_filename, arguments[0], 
+         strlen(arguments[0]) + 1);
+
   // Push the actual arguments onto the stack
   for (int i = count - 1; i >= 0; i--)
   {

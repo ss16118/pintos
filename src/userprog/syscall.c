@@ -17,6 +17,7 @@
 
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/inode.h"
 
 #define WORD 4
 
@@ -189,6 +190,12 @@ void exit(int status)
     }
   }
 
+  if (thread_current()->executable_filename != NULL)
+  {
+
+  }
+
+
   /* Up the semaphore so that its parent can start running */
   sema_up(&thread_current()->parent->wait_for_child);
     if (thread_current()->parent != NULL &&
@@ -335,6 +342,7 @@ int open(const char *file)
   {
     exit(SYSCALL_ERROR);
   }
+
   struct file *f = filesys_open(file);
   if (f != NULL)
   {
@@ -342,6 +350,12 @@ int open(const char *file)
     struct file_list_elem *fl = malloc(sizeof(struct file_list_elem *));
     fl->fd = fd;
     fl->file = f;
+
+    if (strcmp(file, thread_current()->executable_filename) == 0)
+    {
+      file_deny_write(f);
+    }
+
     list_push_back(&thread_current()->files, &fl->elem);
     
     return fd;
@@ -407,13 +421,14 @@ int read(int fd, void *buffer, unsigned size)
   {
     exit(SYSCALL_ERROR);
   }
-
-  if (fd > STDOUT_FILENO)
+  
+  if (fd > STDIN_FILENO)
   {
     struct file_list_elem *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
-      return file_read(fl->file, buffer, size);
+      int bytes_read = file_read(fl->file, buffer, size);
+      return bytes_read;
     }
   }
   else if (fd == STDIN_FILENO)
@@ -421,9 +436,10 @@ int read(int fd, void *buffer, unsigned size)
     unsigned char_count = 0;
     while (char_count < size)
     {
-      buffer = (char *) buffer + 1;
       memset(buffer, input_getc(), sizeof(uint8_t));
+      buffer = (char *) buffer + 1;
       char_count++;
+
     }
     return size;
   }
@@ -451,6 +467,7 @@ int write(int fd, const void *buffer, unsigned size)
   {
     exit(SYSCALL_ERROR);
   }
+
   if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
@@ -513,6 +530,7 @@ void close(int fd)
   struct file_list_elem *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
+    file_close(fl->file);
     list_remove(&fl->elem);
     free(fl);
   }
