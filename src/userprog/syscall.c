@@ -190,18 +190,12 @@ void exit(int status)
     }
   }
 
-  if (thread_current()->executable_filename != NULL)
+  /* Checks if parent is waiting on thread */
+  if (thread_current()->parent != NULL &&
+      list_size(&thread_current()->parent->wait_for_child.waiters) > 0)
   {
-
-  }
-
-
-  /* Up the semaphore so that its parent can start running */
-  sema_up(&thread_current()->parent->wait_for_child);
-    if (thread_current()->parent != NULL &&
-      !list_empty(&thread_current()->parent->exec_sema.waiters))
-  {
-    sema_up(&thread_current()->parent->exec_sema);
+    /* Instructs parent to stop waiting */
+    sema_up(&thread_current()->parent->wait_for_child);
   }
   thread_exit();
 }
@@ -227,8 +221,8 @@ pid_t exec(const char *cmd_line)
   memcpy(temp_cmd_line, cmd_line, strlen(cmd_line) + 1);
 
   pid_t child_pid = process_execute(temp_cmd_line);
+  sema_down(&thread_current()->wait_for_child);
   
-  sema_down(&thread_current()->exec_sema);
   if (child_pid == TID_ERROR || thread_current()->child_exit_status == TID_ERROR)
   {
     return SYSCALL_ERROR;
@@ -267,7 +261,17 @@ pid_t exec(const char *cmd_line)
  */
 int wait(pid_t pid)
 {
-  return process_wait(pid);
+  /* Blocks itself until its child finishes executing*/
+  thread_current()->child_exit_status = TID_ERROR;
+  struct thread *child_thread = thread_get_child(pid);
+
+  if (child_thread != NULL &&
+      list_size(&thread_current()->child_permission.waiters) > 0)
+  {
+    sema_up(&thread_current()->child_permission);
+    sema_down(&thread_current()->wait_for_child);
+  }
+  return thread_current()->child_exit_status;
 }
 
 

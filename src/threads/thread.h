@@ -110,7 +110,8 @@ struct thread
     struct list files;                 /* List of files that have been opened by the 
                                            current thread */
     struct semaphore wait_for_child;
-    struct semaphore exec_sema;
+    struct semaphore child_permission;
+
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent;              /* Current thread's parent thread */

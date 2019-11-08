@@ -10,8 +10,6 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
-struct lock *file_sys_lock;
-
 static void do_format (void);
 
 /* Initializes the file system module.
@@ -19,7 +17,6 @@ static void do_format (void);
 void
 filesys_init (bool format) 
 {
-  lock_init(&file_sys_lock);
   fs_device = block_get_role (BLOCK_FILESYS);
   if (fs_device == NULL)
     PANIC ("No file system device found, can't initialize file system.");
@@ -48,7 +45,6 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size) 
 {
-  lock_acquire(&file_sys_lock);
   block_sector_t inode_sector = 0;
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
@@ -58,7 +54,6 @@ filesys_create (const char *name, off_t initial_size)
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
-lock_release(&file_sys_lock);
   return success;
 }
 
@@ -70,15 +65,12 @@ lock_release(&file_sys_lock);
 struct file *
 filesys_open (const char *name)
 {
-
-  lock_acquire(&file_sys_lock);
   struct dir *dir = dir_open_root ();
   struct inode *inode = NULL;
 
   if (dir != NULL)
     dir_lookup (dir, name, &inode);
   dir_close (dir);
-  lock_release(&file_sys_lock);
   return file_open (inode);
 }
 
@@ -89,11 +81,9 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name) 
 {
-  lock_acquire(&file_sys_lock);
   struct dir *dir = dir_open_root ();
   bool success = dir != NULL && dir_remove (dir, name);
   dir_close (dir); 
-  lock_release(&file_sys_lock);
   return success;
 }
 
@@ -101,12 +91,10 @@ filesys_remove (const char *name)
 static void
 do_format (void)
 {
-  lock_acquire(&file_sys_lock);
   printf ("Formatting file system...");
   free_map_create ();
   if (!dir_create (ROOT_DIR_SECTOR, 16))
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");
-  lock_release(&file_sys_lock);
 }

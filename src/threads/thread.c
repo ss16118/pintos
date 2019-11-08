@@ -390,22 +390,16 @@ struct thread *thread_get_child(tid_t child_tid)
 {
   enum intr_level old_level = intr_disable();
 
-  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list);
-       e = list_next(e))
+  for (struct list_elem *e =
+              list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
   {
     struct thread *current_thread = list_entry(e, struct thread, allelem);
-    if (current_thread != idle_thread && current_thread->tid == child_tid)
+    if (current_thread != idle_thread &&
+        current_thread->tid == child_tid &&
+        current_thread->parent == thread_current())
     {
-      if (current_thread->parent == thread_current())
-      {
-        intr_set_level(old_level);
-        return current_thread;
-      }
-      else
-      {
-        intr_set_level(old_level);
-        return NULL;
-      }
+      intr_set_level(old_level);
+      return current_thread;
     }
   }
   intr_set_level(old_level);
@@ -670,7 +664,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   #ifdef USERPROG
-  sema_init(&t->exec_sema, 0);
+  sema_init(&t->child_permission, 0);
   list_init(&t->files);
   sema_init(&t->wait_for_child, 0);
   #endif

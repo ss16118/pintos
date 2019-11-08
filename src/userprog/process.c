@@ -68,17 +68,18 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-  if (thread_current()->parent != NULL &&
-      !list_empty(&thread_current()->parent->exec_sema.waiters))
+  if (success && thread_current()->parent != NULL &&
+           list_size(&thread_current()->parent->wait_for_child.waiters) > 0)
   {
-    sema_up(&thread_current()->parent->exec_sema);
+    sema_up(&thread_current()->parent->wait_for_child);
+    sema_down(&thread_current()->parent->child_permission);
   }
   /* If load failed, quit. */
   palloc_free_page (parameters);
   if (!success)
+  {
     exit(SYSCALL_ERROR);
-  else
-    thread_yield();
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -108,7 +109,14 @@ process_wait (tid_t child_tid)
 
   if (child_thread != NULL)
   {
+    //Wait for child to finish loading
     sema_down(&thread_current()->wait_for_child);
+    if (list_size(&thread_current()->child_permission.waiters) > 0)
+    {
+      //Grant child permission to run and wait for run to complete
+      sema_up(&thread_current()->child_permission);
+      sema_down(&thread_current()->wait_for_child);
+    }
   }
   return thread_current()->child_exit_status;
 }
