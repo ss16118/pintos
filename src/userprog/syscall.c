@@ -181,18 +181,21 @@ void exit(int status)
      struct thread */
   if (!list_empty(&thread_current()->files))
   {
+    enum intr_level old_level = intr_disable();
     struct list_elem *e = list_begin(&thread_current()->files);
     while (e != list_end(&thread_current()->files))
     {
       struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
       e = list_next(e);
+      file_close(fl->file);
       free(fl);
     }
+    intr_set_level(old_level);
   }
 
   /* Checks if parent is waiting on thread */
   if (thread_current()->parent != NULL &&
-      list_size(&thread_current()->parent->wait_for_child.waiters) > 0)
+      !list_empty(&thread_current()->parent->wait_for_child.waiters))
   {
     /* Instructs parent to stop waiting */
     sema_up(&thread_current()->parent->wait_for_child);
@@ -213,6 +216,7 @@ void exit(int status)
  */
 pid_t exec(const char *cmd_line)
 {
+  thread_current()->child_exit_status = 0;
   if (!is_valid_pointer(cmd_line)) {
     exit(SYSCALL_ERROR);
   }
@@ -266,7 +270,7 @@ int wait(pid_t pid)
   struct thread *child_thread = thread_get_child(pid);
 
   if (child_thread != NULL &&
-      list_size(&thread_current()->child_permission.waiters) > 0)
+      !list_empty(&thread_current()->child_permission.waiters))
   {
     sema_up(&thread_current()->child_permission);
     sema_down(&thread_current()->wait_for_child);

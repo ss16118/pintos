@@ -45,6 +45,7 @@ process_execute (const char *parameters)
   char *temp_ptr;
   char *file_name = strtok_r(parameters, " ", &temp_ptr);
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
 
@@ -76,10 +77,8 @@ start_process (void *file_name_)
   }
   /* If load failed, quit. */
   palloc_free_page (parameters);
-  if (!success)
-  {
+  if (!success) 
     exit(SYSCALL_ERROR);
-  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
