@@ -690,7 +690,7 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->wait_for_child, 0);
   list_init(&t->files);
   list_init(&t->child_waits);
-  t->child_waiting = NOT_CHILD;
+  t->child_waiting = TID_ERROR;
   #endif
   t->magic = THREAD_MAGIC; 
 
