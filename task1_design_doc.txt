@@ -1,0 +1,369 @@
+            +----------------------+
+            |        OS 211        |
+            |  TASK 1: SCHEDULING  |
+            |    DESIGN DOCUMENT   |
+            +----------------------+
+                   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Ruoyu   Hu    rh4618@ic.ac.uk
+Siyuan  Shen  ss16118@ic.ac.uk
+Hantang Sun   hs5718@ic.ac.uk
+Yifei   Zhang yz31218@ic.ac.uk
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, or notes for the
+>> markers, please give them here.
+
+>> Please cite any offline or online sources you consulted while preparing your 
+>> submission, other than the Pintos documentation, course text, lecture notes 
+>> and course staff.
+
+             PRIORITY SCHEDULING
+             ===================
+
+---- DATA STRUCTURES ----
+
+>> A1: (2 marks) 
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
+>> global or static variable, `typedef', or enumeration.  
+>> Identify the purpose of each in roughly 25 words.
+ 
+  int effective_priority;
+
+This is added to the thread struct to be its effective priority, as in the event
+of priority donation it would have an artificially higher priority but will need
+to be able to reset to its base priority once all required resources are
+released. The pre-existing 'int priority' member acts as the base priority in
+this case, this variable is not set or used in mlfqs mode.
+
+  struct thread *dependent_on;
+
+This thread pointer was added as a member of the thread struct in order to
+record the thread if any, that this thread was reliant on for a resource. Is
+initialised to NULL. This is used in priority donation to recursively traverse
+through the chain of dependencies.
+
+  struct list_elem dependent_elem;
+
+This list elem is to be stored inside another thread's dependent list when it
+holds a resource that this thread possesses. This allows the depended thread to
+calculate its next priority based on threads dependent on it when releasing
+locks.
+
+  struct list dependent_list;
+
+This list holds all threads that are dependent on this thread for a resource, so
+that this thread's effective priority can be calculated where one resource is
+released and the thread no longer has the highest priority.
+
+>> A2: (4 marks) 
+>> Draw a diagram that illustrates a nested donation in your structure and 
+>> briefly explain how this works.
+
+      ___         ___         ___
+     |   |[35]   |   |33:[35]|   |31:33:[35]      -->  Dependent on
+     | B |------>| A |------>| M |                ---  Acquired
+     |___|       |___|       |___|                ...  Attempting to Acquire
+       |           |....|L1|---|                  [n]  Effective Priority
+       |....|L2|---|
+
+B.dependent_on:       A
+B.depenedent_list:    []
+B.effective_priority: 35
+B.priority:           35
+
+A.depdent_on:         M
+A.dependent_list:    [B]
+A.effective_priority: 35
+A.priority:           33
+
+M.dependent_on:      NULL
+M.dependent_list:    [A]
+M.effective_priority: 35
+M.priority:           31
+
+The above diagram illustrates a situation with three threads, M, A and B.
+M, of priority 31 is the initial thread running, it acquires a lock L1 by
+calling lock_acquire(L1). A thread A of priority 33 is created, and it attempts
+to acquire L1 by calling lock_acquire(), where it is unable to acquire L1 as it
+is held by M. Thread A sets its dependent_on member to point to M, adds itself
+to M's dependent_list and puts itself into L1's waiters list ordered by
+priority. Thread A then calls thread_donate_priority() on thread M to donate its
+priority to M, within the call, thread A checks to see if M's effective priority
+is lower than its, and if applicable, donate its effective priority to M,
+boosting M's effective priority to 33.
+
+A thread, B is then created, which has priority 35, this thread calls
+lock_acquire on L2, but is unable acquire it, as L2 is held by A, it therefore
+calls thread_donate_priority() on A to donate its priority to A, raising its
+effective priority to 35, it then recursively calls thread_donate_priority() on
+A's dependent_on if it is not NULL. It then donates its priority to M also,
+artificially raising its effective priority to 35.
+
+The priority donation process works recursively to traverse through the chain of
+dependencies via the dependent_on member of a struct thread, and donates its
+priority to each thread that it reaches until it reaches a thread that is either
+not dependent or has a higher effective priority.
+
+---- ALGORITHMS ----
+
+>> A3: (3 marks) 
+>> How do you ensure that the highest priority waiting thread wakes up first for
+>> a (i) lock, (ii) semaphore, or (iii) condition variable?
+
+i.    The list of threads waiting to acquire a lock is stored in the lock's
+      semaphore member, as such, the first thread to wake up after the lock is
+      released is the first thread to be woken up by the semaphore as the lock's
+      semaphore is sema-uped. As priority scheduling is working for semaphores,
+      we can guarantee that the first thread to wake up is the thread with the
+      highest priority.
+
+ii.   Priority scheduling is implemented for semaphores by first inserting
+      threads into the waiters list ordered by their priorities when a thread
+      attempts to down the semaphore. When the semaphore is brought up, it first
+      sorts the waiters list by priority again, to account for any changes to
+      priorities due to priority donations, then unblocks the first thread in
+      list, which is the thread with the highest priority after sorting.
+
+iii.  Priority scheduling is implemented for condition variables by changing the
+      condition signalling function cond_signal(), which wakes up waiters on the
+      conditions. Each waiter accommodates a list of threads that wait on that
+      specific condition. Therefore by sorting the conditions by priority, of
+      their highest priority waiting threads, we can ensure that the condition
+      with the highest priority waiting thread wakes said thread up first.
+
+>> A4: (3 marks)
+>> Describe the sequence of events when a call to lock_acquire() causes a 
+>> priority donation. 
+>> How is nested donation handled?
+
+After lock_acquire() is invoked by a thread A, it first checks if the semaphore
+contained in the lock can be downed by using the function sema_try_down(). If
+it fails to do so, it signifies that the lock has already been obtained by
+another thread B. In this case, the dependent_on member of thread A is set to
+thread B, and thread A is inserted into the dependent_list of thread B, which is
+a list of threads that seek to gain access to the resources owned by thread B.
+In addition, dependent_list is an ordered list, which ensures that thread A's
+effective priority can be acquired efficiently by getting the priority of the
+first thread in the list. Then, thread A is inserted into the waiting list
+of the semaphore in an ordered fashion. Next, it invokes the function 
+thread_donate_priority(), which donates thread A's priority to thread B, if
+thread B's effective priority is smaller than that of thread A. Nested donation
+is also dealt with in this function, as it checks whether thread B is dependent
+on another thread C. If it is, the function is invoked again in a recursive
+fashion to donate thread A's effective priority to thread C and any thread C is
+dependent on. When this is completed, thread A blocks itself until its turn to
+acquire the lock comes.
+
+>> A5: (3 marks)
+>> Describe the sequence of events when lock_release() is called on a lock that 
+>> a higher-priority thread is waiting for.
+
+If a lock is released by thread A, we first obtain the next thread to acquire
+the lock, thread B, by getting the first element of the waiting list of the
+lock's semaphore, since it will be the next thread to obtain the lock. Then, the
+function thread_change_dependencies() is called. This sets all the members of
+the semaphore's waiting list to be dependent on thread B while removing them
+from thread A's dependent_list. Thread A's effective priority will be set to the
+effective priority of the next thread on its dependent_list by
+thread_get_highest_priority(). Lastly, the lock's holder is set to NULL and
+sema_up is called to unblock thread B.
+
+---- SYNCHRONIZATION ----
+
+>> A6: (2 marks)
+>> How do you avoid a race condition in thread_set_priority() when a thread 
+>> needs to recompute its effective priority, but the donated priorities 
+>> potentially change during the computation?
+>> Can you use a lock to avoid the race?
+
+Certainly, a lock member can be added to the thread, such that only the holder
+of said lock can call thread_set_priority() to edit its priority at any given
+time.
+
+Assuming a thread A of LOW priority, which holds a lock that thread B of MED
+priority is trying to acquire, B thus donates its MED priority to A and blocks
+itself. At this point thread_set_priority(new_priority) is called on A, which
+first sets its base priority, then checks if how to update its effective
+priority. If new_priority is greater than the existing effective priority,
+the priority of the dependent threads are guaranteed to be lower thus the
+effective priority is set to new_priority. If new_priority is lower than the
+existing effective priority, it then gets the highest priority of its dependent
+threads.
+
+
+In this case there are two possible changes to the donated priorities that may
+affect A's effective priority.
+
+If the effective priority of the highest priority dependent thread on A (let's
+assume it's B) somehow has its priority increased. B does not have the CPU as it
+is currently blocked, waiting on A, thus it cannot raise its priority via a call
+to thread_set_priority(), as such, its effective priority can only be raised via
+priority donation from some thread C. Because our priority donation process
+works recursively, C would have donated its effective priority to A if it were
+higher before it yielded the CPU. This is because the thread_donate_priority()
+function is only called with interrupts disabled. Therefore there is no event
+where the highest donated priority is raise during computation without A being
+also updated, thus thread A cannot be in a situation where the dependent
+threads' highest priority is greater than its effective priority, at this point
+in the execution.
+
+If the highest effective priority dependent thread of A suddenly has its
+effective priority lower such that the highest donated priority to A should also
+be reduced, this would not cause an issue as the function
+thread_get_highest_priority() returns the greatest value between its donated
+priorities (priorities of its dependent threads) and thread A's (new) base
+priority.
+
+
+---- RATIONALE ----
+
+>> A7: (3 marks)
+>> Why did you choose this design?  
+>> In what ways is it superior to another design you considered?
+
+Initially our design does not have either of the dependent_on and dependent_list
+members within struct thread, priority donation was only handled when a thread
+attempts to acquire a resource held by another thread. The first issue this
+initial design posed was that during priority donation, if thread A donates to
+thread B, but thread B is  dependent on thread C, under the initial design A
+would not be aware of the existence of C, or the need to donate to it, the
+responsibility to continue the chain of priority donations fell on B, which
+would be woken up and tried to donate to C. The amount of context switches
+required by the model was too much, and too unnecessarily expensive, therefore
+by allowing the dependency to be stored within the dependent thread, we can use
+the current thread to traverse the whole of the dependency chain.
+
+Another issue then arose in regards to our original design, assuming a thread
+that holds multiple locks, when it calls lock_release() on one of its locks, it
+loses all the donated priorities from that lock, but its effective priority
+could be the highest donated priority from another lock that it holds, as such
+it should not be reset to its base priority. Therefore we added the
+dependent_list and dependent_elem member of the struct thread, in order to keep
+track of dependencies from the holder to the dependent thread.
+
+This design of a doubly linked thread dependency is the final design that we
+came up with, as due to its ability to traverse both ways in a dependency
+chain, we are able to calculate effective priorities and achieve priority
+donations with a minimal amount of context switches, which are time expensive.
+
+
+              ADVANCED SCHEDULER
+              ==================
+
+---- DATA STRUCTURES ----
+
+>> B1: (2 marks)
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
+>> global or static variable, `typedef', or enumeration. 
+>> Identify the purpose of each in roughly 25 words.
+
+1. new struct member:
+
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Base Priority. */
+    int effective_priority;             /* Effective Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+    struct thread *dependent_on;        /* Pointer of thread this thread
+                                           is dependent on */
+
+    struct list_elem dependent_elem;    /* List element for dependent list */
+    struct list dependent_list;         /* List of threads dependent on this thread */
+--> int nice;                           /* Nice value of the thread*/
+--> int64_t recent_cpu;                 /* recent_cpu value of the thread */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /*
+     * Owned by timer.c to determine whether the thread is sleeping and
+     * how long the thread needs to sleep for
+     */
+    int64_t wake_time;
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+
+2.static variable:
+
+static int64_t load_average = 0;  /* defined in thread.c */
+
+int nice, int64_t recent_cpu are added to struct thread for the
+advanced scheduler.
+
+int nice is used to store the niceness of the thread, whereas recent_cpu stores
+the thread's cpu_usage. Both attributes are used in the calculation of priority.
+
+load_average is a static variable that estimates the average number of threads
+that are running or ready threads in the past 60 seconds. It is used in the 
+calculation of recent_cpu.
+
+recent_cpu and load_average are real numbers. To minimize rounding error, they
+are stored as 2 ^ 14 multiplied by their actual value. 
+Conversion back to their actual value only happens when their values
+are retrieved by the get functions.
+
+We have not used any additional data_structure to store the threads. They are
+still kept in the ready_list which is sorted every time priority is updated.
+
+---- ALGORITHMS ----
+
+>> B2: (3 marks)
+>> Suppose threads A, B, and C have nice values 0, 1, and 2 and each has a 
+>> recent_cpu value of 0.
+>> Fill in the table below showing the scheduling decision, the priority and the
+>> recent_cpu values for each thread after each given number of timer ticks:
+
+timer  recent_cpu    priority   thread
+ticks   A   B   C   A   B   C   to run
+-----  --  --  --  --  --  --   ------
+ 0      0   0   0  63  61  59      A
+ 4      4   0   0  62  61  59      A
+ 8      8   0   0  61  61  59      A
+12     12   0   0  60  61  59      B
+16     12   4   0  60  60  59      A
+20     16   4   0  59  60  59      B
+24     16   8   0  59  59  59      A
+28     20   8   0  58  59  59      B
+32     20  12   0  58  58  59      C
+36     20  12   4  58  58  58      A
+
+When two threads have the same priority, the scheduler's behaviour is undefined
+by the specification. In our implementation, when two threads have the same
+priority, their relative position in the ready_list is kept unchanged. 
+This means that the scheduler will keep the current thread running.
+As a result, the cost of swapping running thread is minimized.
+
+---- RATIONALE ----
+
+>> B4: (3 marks)
+>> Briefly critique your design, pointing out advantages and disadvantages in 
+>> your design choices.
+
+We use one queue (the ready_list) rather than 64 lists to store the threads. 
+There are two major advantages in this design. Firstly, the design uses
+less memory, since no additional list data structure is used to store the
+threads. Secondly, when there are few threads in the ready_list, the program
+runs faster as there is no need to traverse through all 64 lists.
+
+However, when the number of threads increases, our design becomes
+less efficient. That is because the ready_list needs to be sorted every time the
+priority is updated (this operation has complexity O(nlogn)).
+Carrying out such an expensive operation every 4 ticks (0.04s) causes
+the program to get slower.
