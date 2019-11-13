@@ -319,8 +319,7 @@ int wait(pid_t pid)
   /* Check if given pid is a child of current thread */
   struct child_bookmark* child_exit =
             thread_waiting_child(&thread_current()->child_waits, pid);
-  if (child_exit != NULL &&
-      child_exit->child_exit_status != NOT_CHILD)
+  if (child_exit != NULL)
   {
     if (child_exit->child_exit_status == CHILD_RUNNING)
     {

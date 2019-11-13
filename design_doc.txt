@@ -29,9 +29,11 @@ Yifei     Zhang <yz31218@ic.ac.uk>
 ---- DATA STRUCTURES ----
 
 >> A1: (1 mark)
->> Copy here the declaration of each new or changed `struct' or `struct' member, 
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
+
+No structs or struct members were edited for this section.
 
 ---- ALGORITHMS ----
 
@@ -39,15 +41,47 @@ Yifei     Zhang <yz31218@ic.ac.uk>
 >> How does your argument parsing code avoid overflowing the user's stack page?
 >> What are the efficiency considerations of your approach?
 
+Every time the stack pointer (esp) is decremented, we check if it is less than
+BASE_LINE, which is minimum valid user address. If the stack pointer is now less
+than BASE_LINE, the setup_stack() function immediately returns false, this
+prevents something being pushed to the stack that would cause it to overflow the
+user's stack page. The running thread then skips to the "done" tag inside the
+load() function, causing it to also return false. As the load has failed, the
+thread's memory is deallocated and the thread will not run.
+
+
+This also reduces wastes in memory as threads that will not run will have its
+memory deallocated and recycled. Checking every stack decrement also reduces the
+amount of unnecessary pushes to stack in the event of a failure to push, as it
+returns immediately from the function.
+
 ---- RATIONALE ----
 
 >> A3: (3 marks)
 >> Why does Pintos implement strtok_r() but not strtok()?
 
+strtok_r() is the reentrant version of strtok. As interrupts are not disabled
+while setting up the stack, the current running thread can be preempted or
+interrupted during the course of execution, strtok could return the incorrect
+substring, as the interrupt could cause previous progress made on tokenisation
+to be lost. strtok_r() is reentrant, such that it can return to its previous
+state of execution once the interrupt behaviour has been appropriately dealt
+with.
+
 >> A4: (2 marks)
->> In Pintos, the kernel separates commands into an executable name and arguments. 
->> In Unix-like systems, the shell does this separation. 
->> Identify two advantages of the Unix approach.
+>> In Pintos, the kernel separates commands into an executable name and
+>> arguments. In Unix-like systems, the shell does this separation. Identify two
+>> advantages of the Unix approach.
+
+One advantage of the Unix approach is that it simplifies the system kernel by
+delegating the separation task to the shell, as such it does not require any
+complex and defined tools within the kernel for such a task.
+
+The other advantage is that it provides flexibility in the kernel, such that
+there can be many different types of dedicated user shells with a set interface
+to the kernel. And there would be no need to change the kernel if the user
+is to use a new shell with a different encoding so long as it adheres to the
+interface.
 
                  SYSTEM CALLS
                  ============
@@ -55,15 +89,103 @@ Yifei     Zhang <yz31218@ic.ac.uk>
 ---- DATA STRUCTURES ----
 
 >> B1: (6 marks) 
->> Copy here the declaration of each new or changed `struct' or `struct' member, 
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
+
+  #define SYSCALL_ERROR -1
+
+This is a new constant representing an erroneous status
+
+  struct file_fd
+  {
+      int fd;
+      struct file *file;
+      struct list_elem elem;
+  };
+
+This is a new struct introduced for threads to keep track of files it has open,
+and their unique file descriptors this is added to a newly introduced list
+member within the thread struct.
+
+
+  struct child_bookmark
+  {
+      pid_t child_pid;
+      int child_exit_status;
+      struct list_elem elem;
+  };
+
+This is a new struct introduced for threads to keep a "bookmark" of its children
+threads and their corresponding exit statuses. This is used in the event the
+parent has to wait on a child to finish execution.
+
+
+  #define CHILD_RUNNING -2
+
+This is a new constant introduced to represent a default child_exit_status
+within the child_bookmark struct when it is created. The SYSCALL_ERROR constant
+defined above cannot be used as it is a potential exit status return from the
+child.
+
+
+    struct list files;
+
+This is a new list member added to the thread struct to keep track of all the
+files this current thread has open.
+
+
+    struct list child_waits;
+    
+This is a new list member added to the thread struct to keep track of the
+bookmarks it has on the exit status of its child threads.
+
+
+    struct semaphore wait_for_child;
+
+This is a new semaphore member added to the thread struct to allow for the
+parent thread to wait until a child thread has finished performing some task,
+and "wakes up" the parent thread.
+
+
+    tid_t child_waiting;
+
+This is a new tid_t member added to the thread struct which keeps track of the
+tid of the child thread the current thread is waiting for/last thread the parent
+thread waited for. Used together with the wait_for_child semaphore above to
+allow the child thread to determine if the parent is waiting for it.
+
+
+    struct thread *parent;              /* Current thread's parent thread */
+
+This is a new thread pointer member added to the thread struct which points the
+child thread towards its parent thread.
+
+
+    int child_exit_status;
+
+This is a new int member added to the thread struct which keeps tract of the
+exit status of the last child to exit. Primarily used for the first kernel
+thread.
+
+
+    char executable_filename[MAX_FILENAME_LEN];
+
+This is a string member added to the thread struct which keeps track of the
+current thread's executable file, used to deny write to the file.
 
 ---- ALGORITHMS ----
 
 >> B2: (2 marks)
 >> Describe how your code ensures safe memory access of user provided data from
 >> within the kernel. 
+
+The new function is_valid_pointer(const void *uaddr) is used to check if the
+given pointer points towards an address within user space, in addition it checks
+if the content of the page table at the given address is not NULL.
+
+The above function is used every time we interact with a user given pointer
+within system call context before dereferencing said pointer.
 
 >> B3: (3 marks)
 >> Suppose that we choose to verify user provided pointers by validating them 
@@ -76,7 +198,7 @@ Yifei     Zhang <yz31218@ic.ac.uk>
 >>    (4,096 bytes) of user data.
 >> c) A system call that passes the kernel a pointer to 4 full pages 
 >>    (16,384 bytes) of user data.
->> You must briefly explain the checking tactic you would use and how it applies 
+>> You must briefly explain the checking tactic you would use and how it applies
 >> to each case to generate your answers.
 
 >> B4: (2 marks)
@@ -109,7 +231,7 @@ Yifei     Zhang <yz31218@ic.ac.uk>
 ---- RATIONALE ----
 
 >> B8: (2 marks)
->> Why did you choose to implement safe access of user memory from the kernel in 
+>> Why did you choose to implement safe access of user memory from the kernel in
 >> the way that you did?
 
 >> B9: (2 marks)

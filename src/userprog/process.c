@@ -487,7 +487,8 @@ setup_stack (void **esp, char *parameters)
 
   /* Tokenize the arguments and push them onto the interrupt frame according to
      the start-up details */
-  char *token, *save_ptr;
+  char *token;
+  char *save_ptr;
   char arguments[MAX_PARAM_NUM][MAX_ARG_LEN];
   char *argument_addresses[MAX_PARAM_NUM];
   int count = 0;
@@ -507,51 +508,47 @@ setup_stack (void **esp, char *parameters)
   {
     int arg_length = strlen(arguments[i]) + 1;
     *esp -= arg_length;
+    if (*esp < BASE_LINE) return false;
     argument_addresses[i] = (char *) *esp;
     memcpy(*esp, arguments[i], sizeof(char) * arg_length);
   }
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Align the stack pointer to be a multiple of 4
   int offset = -((int) *esp) % 4;
   *esp -= offset;
+  if (*esp < BASE_LINE) return false;
   memset(*esp, STACK_SENTINEL, offset);
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push 4 bytes of 0 onto the stack
   *esp -= sizeof(int);
+  if (*esp < BASE_LINE) return false;
   memset(*esp, STACK_SENTINEL, sizeof(int));
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push the pointers of the arguments onto the stack
   for (int i = count - 1; i >= 0; i--)
   {
     *esp -= sizeof(char *);
+    if (*esp < BASE_LINE) return false;
     memcpy(*esp, &argument_addresses[i], sizeof(char *));
   }
 
   // Push a pointer to the first pointer
   *esp -= sizeof(char **);
+  if (*esp < BASE_LINE) return false;
   void *argv = *esp + sizeof(char *);
   memcpy(*esp, &argv, sizeof(char **));
-  // *(char ***) if_.esp = (char **) if_.esp + sizeof(char *);
-  // printf("\n");
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
 
   // Push the number of arguments
   *esp -= sizeof(int);
+  if (*esp < BASE_LINE) return false;
   memset(*esp, count, sizeof(uint8_t));
-  // printf("\n");
-  // hex_dump(PHYS_BASE -32, *esp, 32, true);
-  // *(int *) if_.esp = count;
 
   // Push a fake return address
   int *null_pointer = NULL;
   *esp -= sizeof(int);
+  if (*esp < BASE_LINE) return false;
   memset(*esp, null_pointer, sizeof(int *));
 
-  // printf("\n");
-  // hex_dump(PHYS_BASE - 180, *esp, 180, true);
   return (success && (*esp > BASE_LINE));
 }
 

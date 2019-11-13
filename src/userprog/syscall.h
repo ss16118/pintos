@@ -6,9 +6,8 @@
 
 #define SYSCALL_ERROR -1
 #define CHILD_RUNNING -2
-#define NOT_CHILD -3
 
-void syscall_init (void);
+void syscall_init(void);
 void halt(void);
 void exit (int status);
 pid_t exec(const char *cmd_line);
