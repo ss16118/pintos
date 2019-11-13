@@ -69,11 +69,23 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-  if (success && thread_current()->parent != NULL &&
-           list_size(&thread_current()->parent->wait_for_child.waiters) > 0)
+
+  /* Thread will wake parent thread if all of the following conditions are true
+
+    - it has successfully loaded the stack
+    - thread has a valid parent/parent still exists
+    - parent is waiting on a child thread
+    - parent is waiting on this child
+    - parent is waiting via a syscall
+  */
+  if (success &&
+      thread_current()->parent != NULL &&
+      !list_empty(&thread_current()->parent->wait_for_child.waiters) &&
+      thread_current()->parent->child_waiting == thread_current()->tid &&
+      !list_empty(&thread_current()->parent->child_waits))
   {
     sema_up(&thread_current()->parent->wait_for_child);
-    sema_down(&thread_current()->parent->child_permission);
+    thread_yield();
   }
   /* If load failed, quit. */
   palloc_free_page (parameters);
@@ -108,14 +120,9 @@ process_wait (tid_t child_tid)
 
   if (child_thread != NULL)
   {
-    //Wait for child to finish loading
+    /* Child thread is running, wait for it to finish */
+    thread_current()->child_waiting = child_tid;
     sema_down(&thread_current()->wait_for_child);
-    if (list_size(&thread_current()->child_permission.waiters) > 0)
-    {
-      //Grant child permission to run and wait for run to complete
-      sema_up(&thread_current()->child_permission);
-      sema_down(&thread_current()->wait_for_child);
-    }
   }
   return thread_current()->child_exit_status;
 }

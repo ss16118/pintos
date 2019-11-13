@@ -406,6 +406,29 @@ struct thread *thread_get_child(tid_t child_tid)
   return NULL;
 }
 
+/* Gets the child_bookmark from the given CHILD_LIST with the given
+   CHILD_TID or NULL if it is not found */
+struct child_bookmark* thread_waiting_child(struct list* child_list,
+                                             tid_t child_tid)
+{
+  enum intr_level old_level = intr_disable();
+
+  for (struct list_elem *e = list_begin(child_list);
+       e != list_end(child_list); e = list_next(e))
+  {
+    struct child_bookmark* child_exit = list_entry(e,
+                                                   struct child_bookmark,
+                                                   elem);
+    if (child_exit->child_pid == child_tid)
+    {
+      intr_set_level(old_level);
+      return child_exit;
+    }
+  }
+  intr_set_level(old_level);
+  return NULL;
+}
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -664,9 +687,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->dependent_on = NULL;
   list_init(&t->dependent_list);
   #ifdef USERPROG
-  sema_init(&t->child_permission, 0);
-  list_init(&t->files);
   sema_init(&t->wait_for_child, 0);
+  list_init(&t->files);
+  list_init(&t->child_waits);
+  t->child_waiting = NOT_CHILD;
   #endif
   t->magic = THREAD_MAGIC; 
 

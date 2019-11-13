@@ -109,8 +109,10 @@ struct thread
 #ifdef USERPROG
     struct list files;                 /* List of files that have been opened by the 
                                            current thread */
+
+    struct list child_waits;
     struct semaphore wait_for_child;
-    struct semaphore child_permission;
+    tid_t child_waiting;
 
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -173,6 +175,8 @@ void thread_donate_priority(struct thread *);
 void thread_change_dependencies(struct list *, struct thread *);
 
 struct thread *thread_get_child(tid_t child_tid);
+struct child_bookmark* thread_waiting_child(struct list *child_list,
+                                             tid_t child_tid);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

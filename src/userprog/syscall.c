@@ -10,6 +10,8 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
 #include "pagedir.h"
 #include "kernel/console.h"
 #include "devices/shutdown.h"
@@ -24,6 +26,7 @@
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
 static int file_desc_count = 2;
+static struct lock filesys_lock;
 
 /*
  * Checks if the pointer is a valid pointer. It is implemented with
@@ -43,6 +46,7 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&filesys_lock);
 }
 
 static void
@@ -174,7 +178,6 @@ void halt(void)
  */
 void exit(int status)
 {
-  thread_current()->parent->child_exit_status = status;
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
   /* Frees all the memory occupied by the file descriptors in
@@ -185,7 +188,7 @@ void exit(int status)
     struct list_elem *e = list_begin(&thread_current()->files);
     while (e != list_end(&thread_current()->files))
     {
-      struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
+      struct file_fd *fl = list_entry(e, struct file_fd, elem);
       e = list_next(e);
       file_close(fl->file);
       free(fl);
@@ -193,12 +196,43 @@ void exit(int status)
     intr_set_level(old_level);
   }
 
-  /* Checks if parent is waiting on thread */
-  if (thread_current()->parent != NULL &&
-      !list_empty(&thread_current()->parent->wait_for_child.waiters))
+  /* Frees all the memory occupied by the child_bookmarks held by the current
+     thread */
+  if (!list_empty(&thread_current()->child_waits))
   {
-    /* Instructs parent to stop waiting */
-    sema_up(&thread_current()->parent->wait_for_child);
+    enum intr_level old_level = intr_disable();
+    struct list_elem *e = list_begin(&thread_current()->child_waits);
+    while (e != list_end(&thread_current()->child_waits))
+    {
+      struct child_bookmark *child_exit = list_entry(e,
+                                                      struct child_bookmark,
+                                                      elem);
+      e = list_next(e);
+      free(child_exit);
+    }
+    intr_set_level(old_level);
+  }
+
+  /* Checks if parent is waiting on thread */
+  if (thread_current()->parent != NULL)
+  {
+    thread_current()->parent->child_exit_status = status;
+    struct child_bookmark* child_exit =
+        thread_waiting_child(&thread_current()->parent->child_waits,
+                             thread_current()->tid);
+
+    if (child_exit != NULL)
+    {
+      /* Log the thread's exit status to parent's list of bookmarks */
+      child_exit->child_exit_status = status;
+    }
+    
+    if (!list_empty(&thread_current()->parent->wait_for_child.waiters) &&
+        thread_current()->parent->child_waiting == thread_current()->tid)
+    {
+      /* Instructs parent to stop waiting */
+      sema_up(&thread_current()->parent->wait_for_child);
+    }
   }
   thread_exit();
 }
@@ -217,20 +251,37 @@ void exit(int status)
 pid_t exec(const char *cmd_line)
 {
   thread_current()->child_exit_status = 0;
-  if (!is_valid_pointer(cmd_line)) {
+  if (!is_valid_pointer(cmd_line))
+  {
     exit(SYSCALL_ERROR);
   }
 
   char temp_cmd_line[MAX_ARG_LEN * MAX_PARAM_NUM];
   memcpy(temp_cmd_line, cmd_line, strlen(cmd_line) + 1);
 
+  /* Lock edits to filesys while child is loading stack */
+  lock_acquire(&filesys_lock);
   pid_t child_pid = process_execute(temp_cmd_line);
+
+  /* Create child wait bookmark in parent thread */
+  struct child_bookmark* child_status = malloc(sizeof(struct child_bookmark));
+  child_status->child_pid = child_pid;
+  list_push_back(&thread_current()->child_waits, &child_status->elem);
+
+  /* Set parent thread to wait for child thread to finish loading */
+  thread_current()->child_waiting = child_pid;
   sema_down(&thread_current()->wait_for_child);
-  
+
+  /* Re-enable file system access */
+  lock_release(&filesys_lock);
+
   if (child_pid == TID_ERROR || thread_current()->child_exit_status == TID_ERROR)
   {
+    child_status->child_exit_status = SYSCALL_ERROR;
     return SYSCALL_ERROR;
   }
+ 
+  child_status->child_exit_status = CHILD_RUNNING;
   return child_pid;
 }
 
@@ -265,17 +316,30 @@ pid_t exec(const char *cmd_line)
  */
 int wait(pid_t pid)
 {
-  /* Blocks itself until its child finishes executing*/
-  thread_current()->child_exit_status = TID_ERROR;
-  struct thread *child_thread = thread_get_child(pid);
-
-  if (child_thread != NULL &&
-      !list_empty(&thread_current()->child_permission.waiters))
+  /* Check if given pid is a child of current thread */
+  struct child_bookmark* child_exit =
+            thread_waiting_child(&thread_current()->child_waits, pid);
+  if (child_exit != NULL &&
+      child_exit->child_exit_status != NOT_CHILD)
   {
-    sema_up(&thread_current()->child_permission);
-    sema_down(&thread_current()->wait_for_child);
+    if (child_exit->child_exit_status == CHILD_RUNNING)
+    {
+      /* Child is still running, wait until it finishes */
+      thread_current()->child_waiting = pid;
+      sema_down(&thread_current()->wait_for_child);
+
+      /* Get child exit status */
+      child_exit = thread_waiting_child(&thread_current()->child_waits, pid);
+      int child_exit_status = child_exit->child_exit_status;
+
+      /* Set child exit status so parent cannot wait on child again */
+      child_exit->child_exit_status = SYSCALL_ERROR;
+
+      return child_exit_status;
+    }
+    return child_exit->child_exit_status; 
   }
-  return thread_current()->child_exit_status;
+  return SYSCALL_ERROR;
 }
 
 
@@ -298,10 +362,14 @@ bool create(const char *file, unsigned initial_size)
   {
     exit(SYSCALL_ERROR);
   }
+  lock_acquire(&filesys_lock);
   if (strcmp(file, "") != 0)
   {
-    return filesys_create(file, initial_size);
+    int result = filesys_create(file, initial_size);
+    lock_release(&filesys_lock);
+    return result;
   }
+  lock_release(&filesys_lock);
   return false;
 }
 
@@ -318,10 +386,14 @@ bool remove(const char *file)
   {
     exit(SYSCALL_ERROR);
   }
+  lock_acquire(&filesys_lock);
   if (strcmp(file, "") != 0)
   {
-    return filesys_remove(file);
+    int result = filesys_remove(file);
+    lock_release(&filesys_lock);
+    return result;
   }
+  lock_release(&filesys_lock);
   return false;
 }
 
@@ -350,12 +422,13 @@ int open(const char *file)
   {
     exit(SYSCALL_ERROR);
   }
+  lock_acquire(&filesys_lock);
 
   struct file *f = filesys_open(file);
   if (f != NULL)
   {
     int fd = file_desc_count++;
-    struct file_list_elem *fl = malloc(sizeof(struct file_list_elem *));
+    struct file_fd *fl = malloc(sizeof(struct file_fd *));
     fl->fd = fd;
     fl->file = f;
 
@@ -366,18 +439,20 @@ int open(const char *file)
 
     list_push_back(&thread_current()->files, &fl->elem);
     
+    lock_release(&filesys_lock);
     return fd;
   }
+  lock_release(&filesys_lock);
   return SYSCALL_ERROR;
 }
 
 /**
- * Retrieves the file_list_elem wrapper that contains the 
+ * Retrieves the file_fd wrapper that contains the 
  * file pointer given the file's file descriptor. Returns
  * NULL if the file searched for does not exist in the
  * list.
  **/
-static struct file_list_elem *get_file_elem_from_fd(int fd)
+static struct file_fd *get_file_elem_from_fd(int fd)
 {
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread_current()->files))
@@ -386,7 +461,7 @@ static struct file_list_elem *get_file_elem_from_fd(int fd)
         e != list_end(&thread_current()->files);
         e = list_next(e))
     {
-      struct file_list_elem *fl = list_entry(e, struct file_list_elem, elem);
+      struct file_fd *fl = list_entry(e, struct file_fd, elem);
       if (fl != NULL && fl->fd == fd)
       {
         intr_set_level(old_level);
@@ -405,7 +480,7 @@ static struct file_list_elem *get_file_elem_from_fd(int fd)
  */
 int filesize(int fd)
 {
-  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
     return file_length(fl->file);
@@ -429,13 +504,15 @@ int read(int fd, void *buffer, unsigned size)
   {
     exit(SYSCALL_ERROR);
   }
-  
+
+  lock_acquire(&filesys_lock);
   if (fd > STDIN_FILENO)
   {
-    struct file_list_elem *fl = get_file_elem_from_fd(fd);
+    struct file_fd *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
       int bytes_read = file_read(fl->file, buffer, size);
+      lock_release(&filesys_lock);
       return bytes_read;
     }
   }
@@ -449,8 +526,10 @@ int read(int fd, void *buffer, unsigned size)
       char_count++;
 
     }
+    lock_release(&filesys_lock);
     return size;
   }
+  lock_release(&filesys_lock);
   return SYSCALL_ERROR;
 }
 
@@ -482,11 +561,15 @@ int write(int fd, const void *buffer, unsigned size)
     return size;
   }
 
-  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  lock_acquire(&filesys_lock);
+  struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
-    return file_write(fl->file, buffer, size);
+    int result = file_write(fl->file, buffer, size);
+    lock_release(&filesys_lock);
+    return result;
   }
+  lock_release(&filesys_lock);
   return 0;
 }
 
@@ -504,7 +587,7 @@ int write(int fd, const void *buffer, unsigned size)
  */
 void seek(int fd, unsigned position)
 {
-  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
     file_seek(fl->file, position);
@@ -519,7 +602,7 @@ void seek(int fd, unsigned position)
  */
 unsigned tell(int fd)
 {
-  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
     return file_tell(fl->file);
@@ -535,7 +618,7 @@ unsigned tell(int fd)
  */
 void close(int fd)
 {
-  struct file_list_elem *fl = get_file_elem_from_fd(fd);
+  struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
     file_close(fl->file);

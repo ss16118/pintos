@@ -1,10 +1,12 @@
 #include <user/syscall.h>
-#include <hash.h>
+#include <list.h>
 
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
 #define SYSCALL_ERROR -1
+#define CHILD_RUNNING -2
+#define NOT_CHILD -3
 
 void syscall_init (void);
 void halt(void);
@@ -15,10 +17,17 @@ int wait(pid_t pid);
 bool creat(const char *file, unsigned initial_size);
 bool remove(const char *file);
 
-struct file_list_elem
+struct file_fd
 {
     int fd;
     struct file *file;
+    struct list_elem elem;
+};
+
+struct child_bookmark
+{
+    pid_t child_pid;
+    int child_exit_status;
     struct list_elem elem;
 };
 
