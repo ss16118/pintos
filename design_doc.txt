@@ -307,8 +307,6 @@ correspondingly return -1 in the exe() function.
 >>  ii) P calls wait(C) after C exits?
 >> iii) P terminates, without waiting, before C exits?
 >>  iv) P terminates, without waiting, after C exits?
->> Additionally, how do you ensure that all resources are freed regardless of 
->> the above case? 
 
 i) P fetches C's corresponding child_bookmark from its child_waits list, and
 gets a child_exit_status of CHILD_RUNNING, as C has not exited. P set's its
@@ -338,6 +336,26 @@ iv) P exits, after C has exited. P proceeds to deallocate any memory it
 allocated i.e opened files, children bookmarks. There should be no race
 conditions in this case as C's exit status no longer matters to P, and C no
 longer exists.
+
+>> Additionally, how do you ensure that all resources are freed regardless of 
+>> the above case? 
+
+All user processes must go through system call exit when it is terminating. When
+system call to exit is made, the process frees the memory allocated to each of
+the files it has open, in the files member of the thread struct. It then
+iterates through the list of child_bookmarks, the child_waits member of the
+thread struct, and frees the memory allocated to each bookmark entry.
+
+At this point, the memory allocated during the execution of system calls for the
+current process has been freed. The process then calls thread_exit(), which in
+turn calls process_exit(). process_exit deallocates and destroys the current
+process's page directory. Then thread_exit() then sets the thread's status to
+THREAD_DYING, causing its resources to be deallocated at the schedule() which it
+then calls.
+
+After the above steps, all resources used by the current process has been freed,
+and since user processes will always exit via a system call to exit, this will
+always free all resources used by the process.
 
 ---- RATIONALE ----
 
