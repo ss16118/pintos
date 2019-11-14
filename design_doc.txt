@@ -201,9 +201,19 @@ within system call context before dereferencing said pointer.
 >> You must briefly explain the checking tactic you would use and how it applies
 >> to each case to generate your answers.
 
+
 >> B4: (2 marks)
 >> When an error is detected during a system call handler, how do you ensure 
 >> that all temporarily allocated resources (locks, buffers, etc.) are freed?
+
+Whenever an error occurs in the system call handler, the program will invoke
+exit() immediately and passes -1 as the parameter. Inside the function, all
+the temporarily allocated resources, such as the struct file_fd and
+child_bookmarks, will be freed. At the end of the function call, thread_exit()
+is invoked, inside which the resources within struct thread will be freed.
+All system calls end is terminated by the exit() function, as a result, it
+is ensured that all resources will be de-allocated.
+
 
 >> B5: (8 marks)
 >> Describe your implementation of the "wait" system call and how it interacts 
@@ -217,6 +227,21 @@ within system call context before dereferencing said pointer.
 >> How does your code ensure this? 
 >> How is the load success/failure status passed back to the thread that calls 
 >> "exec"?
+
+To ensure that the exec() function does not return before the executable has
+finished loading, the thread sema downs wait_for_childimmediately after
+process_execute() has been inovked and the child_bookmark struct has been
+created, so that it blocks itself to allow the new executable to be loaded.
+Within the start_process() function in process.c, a conditional statement is
+implemented after the load() function. This conditional statement checks a list
+of conditions, if all of which are satisfied, the parent of the current thread
+will be woken up by calling sema_up() on wait_for_child and the current thread
+will yield in order to allow its parent to run and obtain its tid (pid).
+If the condition fails, the child thread calls exit() with -1 as the parameter.
+Inside exit(), it checks if the current thread's parent has a bookmark for it,
+and sets the child_exit_status field in the bookmark to -1, so that when
+its parent starts running again, it is able to acquire the error code, and
+correspondingly return -1 in the exe() function.
 
 >> B7: (5 marks)
 >> Consider parent process P with child process C. 
