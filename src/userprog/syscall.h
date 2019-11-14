@@ -16,17 +16,19 @@ int wait(pid_t pid);
 bool creat(const char *file, unsigned initial_size);
 bool remove(const char *file);
 
+/* Struct binds an open file to its UNIQUE file descriptor, stored in thread's
+   FILES list */
 struct file_fd
 {
-    int fd;
-    struct file *file;
+    int fd;                     /* unique file descriptor */
+    struct file *file;          /* the openned file */
     struct list_elem elem;
 };
 
 struct child_bookmark
 {
-    pid_t child_pid;
-    int child_exit_status;
+    pid_t child_pid;        /* PID of child this is bookmarking */
+    int child_exit_status;  /* child's exit status, default to CHILD_RUNNING */
     struct list_elem elem;
 };
 

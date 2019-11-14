@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include "process.h"
+#include "pagedir.h"
 
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -8,17 +9,16 @@
 
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "threads/synch.h"
 
-#include "pagedir.h"
 #include "kernel/console.h"
-#include "devices/shutdown.h"
 #include "devices/input.h"
+#include "devices/shutdown.h"
 
-#include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "filesys/inode.h"
 
 #define WORD 4
@@ -41,7 +41,7 @@ static bool is_valid_pointer(const void *uaddr)
   return false;
 }
 
-
+/* Initialises the syscall system */
 void
 syscall_init (void) 
 {

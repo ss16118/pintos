@@ -411,6 +411,12 @@ struct thread *thread_get_child(tid_t child_tid)
 struct child_bookmark* thread_waiting_child(struct list* child_list,
                                              tid_t child_tid)
 {
+  /* Do not attempt to fetch bookmark if parent no longer exists */
+  if (child_list == NULL)
+  {
+    return NULL;
+  }
+
   enum intr_level old_level = intr_disable();
 
   for (struct list_elem *e = list_begin(child_list);
