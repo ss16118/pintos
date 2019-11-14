@@ -348,3 +348,20 @@ longer exists.
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
 >> descriptors?
+
+The file descriptor is allocated using a static int "file_desc_count" that is
+initialized to 2. Each time a new file is opened, the value of "file_desc_count"
+is assigned as the file descriptors and "file_desc_count" is incremented. Then,
+a struct file_fd is created. The struct contains the file pointer and the
+allocated file descriptor. Next, the struct is pushed onto the list of files
+opened by the current thread. When the file needs to be used. The file pointer
+will be retrived from the list of files through a linear search of the descriptor.
+
+The major advantage of this design is that the information of the file pointers
+and descriptors are kept by the thread rather than by a global data structure.
+The number of files opened by a thread is much fewer than the total number of
+opened files. As a result, it will take less time to retrived file pointer.
+
+A disadvantage is that it still takes linear time to get back a file pointer
+with a file descriptor. It could be potentially improved by replacing the list
+with hashmap, which gives constant access time.
