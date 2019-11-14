@@ -252,7 +252,7 @@ void exit(int status)
  */
 pid_t exec(const char *cmd_line)
 {
-  thread_current()->child_exit_status = 0;
+  thread_current()->child_exit_status = CHILD_RUNNING;
   if (!is_valid_pointer(cmd_line))
   {
     exit(SYSCALL_ERROR);
