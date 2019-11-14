@@ -260,7 +260,7 @@ load (const char *parameters, void (**eip) (void), void **esp)
   process_activate ();
 
   char *temp_ptr;
-  char *temp_params[MAX_ARG_LEN * MAX_PARAM_NUM];
+  char temp_params[MAX_ARG_LEN * MAX_PARAM_NUM];
   memcpy(temp_params, parameters, strlen(parameters) + 1);
   char *file_name = strtok_r(temp_params, " ", &temp_ptr);
 
