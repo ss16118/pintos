@@ -118,7 +118,8 @@ member within the thread struct.
 
 This is a new struct introduced for threads to keep a "bookmark" of its children
 threads and their corresponding exit statuses. This is used in the event the
-parent has to wait on a child to finish execution.
+parent has to wait on a child to finish execution. A bookmark is created during
+an execute system call.
 
 
   #define CHILD_RUNNING -2
@@ -219,6 +220,62 @@ is ensured that all resources will be de-allocated.
 >> Describe your implementation of the "wait" system call and how it interacts 
 >> with process termination for both the parent and child.
 
+When the wait() system call is called, it first checks through the list of child
+bookmarks possessed by the current thread by calling thread_waiting_child().
+The returned bookmark is stored into the variable child_exit. If child_exit is
+NULL, the process with the given pid is no a child of the current process, at
+which point the current process does not need to wait for the given process and
+should return a SYSCALL_ERROR.
+
+If the process with the given pid is a child of the current process, the current
+process then checks whether the child process is still running. As specified in
+section B1, the default value of the child_exit_status member of the
+child_bookmark struct defaults to CHILD_RUNNING. If the child_exit status is not
+this default value when the parent process (current process) checks, then the
+child process must has finished execution prior to this point in time, as such
+all the parent process has to do is return the value of the child_exit_status.
+At this point, the parent process will also set the child_exit_status member of
+the bookmark to SYSCALL_ERROR, such that attempting to wait on the same child
+that has finished execution will only yield an error.
+
+In the event that the child process is still executing, the parent process will
+call sema_down on its wait_for_child member semaphore, so that it will not be
+scheduled until its child process finishes execution. It also sets its 
+child_waiting member to the pid of the child process.
+
+When the child process has finished execution, it exits via the exit() system
+call. The exception handler has been changed such that a process will also exit
+via the system call in the event of a page fault in user space.
+
+The exit system call frees the memory allocated to all bookmarks held by the
+calling process, then proceed to check whether its parent is waiting on a
+process. The child process first checks if its parent is NULL, as it is
+permitted for the parent process to terminate before the child. It then finds
+its child_bookmark within the parent's child_waits list (list of children and
+their bookmarks), the child process stores its own exit status within the
+child_exit_status member of the child_bookmark. The child process then checks if
+its parent process is waiting on it, by using the parent's wait_for_child
+semaphore and the aforementioned child_waiting member that stores the required
+pid. If the parent process is waiting on the child process, the child process
+ups the parent's wait_for_child semaphore.
+
+Once the child process has exited, the parent process will eventually be
+scheduled again, at which point it resumes execution within the wait system
+call, since there is no guarantee that the process the parent process waited on
+was the last child process to terminate, it cannot use the child_exit_status
+member within its thread, which stores the exit status of the last child thread
+to exit and is used by process_wait(). Instead, the parent process gets the
+child process's bookmark and gets the member child_exit_status from it, setting
+the member value afterwards to SYSCALL_ERROR and returning the original value.
+
+If the parent process exits at any point during its execution, it will
+deallocate any memory allocated to its bookmarks, but allow its children
+processes to continue running, as such, the execution of the children processes
+are not affected by the parent terminating. Once the children processes
+terminate, they will not attempt to set any bookmarked exit statuses, as they
+no longer exist, and will exit normally.
+
+
 ---- SYNCHRONIZATION ----
 
 >> B6: (2 marks)
@@ -253,6 +310,35 @@ correspondingly return -1 in the exe() function.
 >> Additionally, how do you ensure that all resources are freed regardless of 
 >> the above case? 
 
+i) P fetches C's corresponding child_bookmark from its child_waits list, and
+gets a child_exit_status of CHILD_RUNNING, as C has not exited. P set's its
+child_waiting member to C's pid, and then calls sema_down() on P's 
+wait_for_child semaphore. At this point only C could call sema_up() on P's
+wait_for_child semaphore, as such when P resumes execution, there is a
+guarantee that C must have completed its execution and has exited. No race
+conditions can occur as P does not resume execution until C has exited.
+
+ii) C exits, fetching its corresponding bookmark from P, and sets the 
+child_exit_status member to its exit status. P calls wait() on process C, where
+it then gets C's corresponding bookmark from its child_waits member list, P sees
+that the bookmarked child_exit_status for C is not CHILD_RUNNING, meaning C must
+have already exited. P returns the bookmarked child_exit_status as the exit
+status of C. No race conditions can occur as P does not wait and C has already
+exited.
+
+iii) P terminates, during its exit, it frees all the memory it allocated,
+including its list of child_bookmarks. C at some point executes, and exits,
+where it checks if its parent is NULL, which in this case since P no longer
+exists, is true. C will not attempt to set its corresponding bookmark in P as P
+no longer exist. There should be no race conditions in this case as C checks for
+P's existence with interrupts disabled, as such P cannot exit whilst C is in the
+process of accessing its resources.
+
+iv) P exits, after C has exited. P proceeds to deallocate any memory it
+allocated i.e opened files, children bookmarks. There should be no race
+conditions in this case as C's exit status no longer matters to P, and C no
+longer exists.
+
 ---- RATIONALE ----
 
 >> B8: (2 marks)
@@ -261,4 +347,4 @@ correspondingly return -1 in the exe() function.
 
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
->
+>> descriptors?

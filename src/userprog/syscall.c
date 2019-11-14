@@ -214,6 +214,7 @@ void exit(int status)
   }
 
   /* Checks if parent is waiting on thread */
+  enum intr_level old_level = intr_disable();
   if (thread_current()->parent != NULL)
   {
     thread_current()->parent->child_exit_status = status;
@@ -234,6 +235,7 @@ void exit(int status)
       sema_up(&thread_current()->parent->wait_for_child);
     }
   }
+  intr_set_level(old_level);
   thread_exit();
 }
 
@@ -275,9 +277,8 @@ pid_t exec(const char *cmd_line)
   /* Re-enable file system access */
   lock_release(&filesys_lock);
 
-  if (child_pid == TID_ERROR || thread_current()->child_exit_status == TID_ERROR)
+  if (child_pid == TID_ERROR || child_status->child_exit_status == SYSCALL_ERROR)
   {
-    child_status->child_exit_status = SYSCALL_ERROR;
     return SYSCALL_ERROR;
   }
  
