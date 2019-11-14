@@ -363,6 +363,12 @@ always free all resources used by the process.
 >> Why did you choose to implement safe access of user memory from the kernel in
 >> the way that you did?
 
+We have inplemented the fuction is_valid_pointer(const void *uaddr) to check 
+validity of the pointer that user provided. This function makes sure address 
+is not NULL or not in the kernel space and virtual address has already mapped. 
+Before corresponding system call function is invoked, each argument that has 
+been passed in will be checked by is_valid_pointer(const void *uaddr); 
+
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
 >> descriptors?
