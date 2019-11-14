@@ -202,6 +202,14 @@ within system call context before dereferencing said pointer.
 >> You must briefly explain the checking tactic you would use and how it applies
 >> to each case to generate your answers.
 
+a) least : 1 checks, greatest : 2 checks (if all bytes are in the same page,
+validate that page, otherwise validate both pages)
+
+b) least : 1 checks, greatest 2 checks
+
+c) least : 4 checks, greatest 5 checks
+
+All the pages spanned by the used memory needs to be validated
 
 >> B4: (2 marks)
 >> When an error is detected during a system call handler, how do you ensure 
