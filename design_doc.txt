@@ -93,9 +93,11 @@ interface.
 >> global or static variable, `typedef', or enumeration. 
 >> Identify the purpose of each in roughly 25 words.
 
+
   #define SYSCALL_ERROR -1
 
 This is a new constant representing an erroneous status
+
 
   struct file_fd
   {
@@ -130,26 +132,26 @@ defined above cannot be used as it is a potential exit status return from the
 child.
 
 
-    struct list files;
+  struct list files;
 
 This is a new list member added to the thread struct to keep track of all the
 files this current thread has open.
 
 
-    struct list child_waits;
+  struct list child_waits;
     
 This is a new list member added to the thread struct to keep track of the
 bookmarks it has on the exit status of its child threads.
 
 
-    struct semaphore wait_for_child;
+  struct semaphore wait_for_child;
 
 This is a new semaphore member added to the thread struct to allow for the
 parent thread to wait until a child thread has finished performing some task,
 and "wakes up" the parent thread.
 
 
-    tid_t child_waiting;
+  tid_t child_waiting;
 
 This is a new tid_t member added to the thread struct which keeps track of the
 tid of the child thread the current thread is waiting for/last thread the parent
@@ -157,20 +159,20 @@ thread waited for. Used together with the wait_for_child semaphore above to
 allow the child thread to determine if the parent is waiting for it.
 
 
-    struct thread *parent;              /* Current thread's parent thread */
+  struct thread *parent;              /* Current thread's parent thread */
 
 This is a new thread pointer member added to the thread struct which points the
 child thread towards its parent thread.
 
 
-    int child_exit_status;
+  int child_exit_status;
 
 This is a new int member added to the thread struct which keeps tract of the
 exit status of the last child to exit. Primarily used for the first kernel
 thread.
 
 
-    char executable_filename[MAX_FILENAME_LEN];
+  char executable_filename[MAX_FILENAME_LEN];
 
 This is a string member added to the thread struct which keeps track of the
 current thread's executable file, used to deny write to the file.
@@ -294,8 +296,8 @@ no longer exist, and will exit normally.
 >> "exec"?
 
 To ensure that the exec() function does not return before the executable has
-finished loading, the thread sema downs wait_for_childimmediately after
-process_execute() has been inovked and the child_bookmark struct has been
+finished loading, the thread sema downs wait_for_child immediately after
+process_execute() has been invoked and the child_bookmark struct has been
 created, so that it blocks itself to allow the new executable to be loaded.
 Within the start_process() function in process.c, a conditional statement is
 implemented after the load() function. This conditional statement checks a list
@@ -306,7 +308,7 @@ If the condition fails, the child thread calls exit() with -1 as the parameter.
 Inside exit(), it checks if the current thread's parent has a bookmark for it,
 and sets the child_exit_status field in the bookmark to -1, so that when
 its parent starts running again, it is able to acquire the error code, and
-correspondingly return -1 in the exe() function.
+correspondingly return -1 in the exec() function.
 
 >> B7: (5 marks)
 >> Consider parent process P with child process C. 
@@ -324,7 +326,7 @@ wait_for_child semaphore, as such when P resumes execution, there is a
 guarantee that C must have completed its execution and has exited. No race
 conditions can occur as P does not resume execution until C has exited.
 
-ii) C exits, fetching its corresponding bookmark from P, and sets the 
+ii) C exits, fetching its corresponding bookmark from P, and sets the
 child_exit_status member to its exit status. P calls wait() on process C, where
 it then gets C's corresponding bookmark from its child_waits member list, P sees
 that the bookmarked child_exit_status for C is not CHILD_RUNNING, meaning C must
@@ -371,11 +373,11 @@ always free all resources used by the process.
 >> Why did you choose to implement safe access of user memory from the kernel in
 >> the way that you did?
 
-We have inplemented the fuction is_valid_pointer(const void *uaddr) to check 
-validity of the pointer that user provided. This function makes sure address 
-is not NULL or not in the kernel space and virtual address has already mapped. 
-Before corresponding system call function is invoked, each argument that has 
-been passed in will be checked by is_valid_pointer(const void *uaddr); 
+We have implemented the function is_valid_pointer(const void *uaddr) to check
+validity of the pointer that user provided. This function makes sure the address
+is not NULL or not in the kernel space, and the virtual address has already been
+mapped. Before the corresponding system call function is invoked, each argument
+that has been passed in will be checked by is_valid_pointer(const void *uaddr).
 
 The reason we chose this design is it prevents the leakage of resources. When 
 is_valid_pointer() return false, we just exit the process, instead of handling 
@@ -386,18 +388,25 @@ page fault that produced by an invalid pointer.
 >> descriptors?
 
 The file descriptor is allocated using a static int "file_desc_count" that is
-initialized to 2. Each time a new file is opened, the value of "file_desc_count"
-is assigned as the file descriptors and "file_desc_count" is incremented. Then,
-a struct file_fd is created. The struct contains the file pointer and the
-allocated file descriptor. Next, the struct is pushed onto the list of files
-opened by the current thread. When the file needs to be used. The file pointer
-will be retrived from the list of files through a linear search of the descriptor.
+initialized to 2. Each time a new file is opened, a new struct file_fd is
+created and the value of "file_desc_count" is assigned as the new file
+descriptor then incremented. The struct file_fd contains a pointer to the opened
+file and the allocated file descriptor. Next, the struct is pushed onto the list
+of files opened by the current thread. When the file needs to be used. The file
+pointer will be retrieved by the thread from its list of files through a linear
+search by file descriptor.
 
 The major advantage of this design is that the information of the file pointers
-and descriptors are kept by the thread rather than by a global data structure.
+and descriptors are held by the thread rather than as a global data structure.
 The number of files opened by a thread is much fewer than the total number of
-opened files. As a result, it will take less time to retrived file pointer.
+opened files, as a result, it will take less time for the thread to retrieve the
+file pointer. Additionally, as the access to the static file_desc_count variable
+inside the open system call is done only with the file system access lock,
+filesys_lock acquired, we can still guarantee that the file descriptor is unique
+for each of the thread's opened files.
 
 A disadvantage is that it still takes linear time to get back a file pointer
-with a file descriptor. It could be potentially improved by replacing the list
+with a file descriptor, which, whilst not a significant issue with a small
+number of files open, would be inefficient if a process would require a larger
+number of files. This could be potentially improved by replacing the files list
 with hashmap, which gives constant access time.

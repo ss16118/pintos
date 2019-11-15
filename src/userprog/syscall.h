@@ -21,10 +21,11 @@ bool remove(const char *file);
 struct file_fd
 {
     int fd;                     /* unique file descriptor */
-    struct file *file;          /* the openned file */
+    struct file *file;          /* the opened file */
     struct list_elem elem;
 };
 
+/* Child process bookmark, allows parent to keep track of child exit status */
 struct child_bookmark
 {
     pid_t child_pid;        /* PID of child this is bookmarking */
