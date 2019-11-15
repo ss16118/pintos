@@ -432,6 +432,9 @@ int open(const char *file)
     fl->fd = fd;
     fl->file = f;
 
+    // If the name of the executable file opened matches that of the
+    // executable file of the current process, deny the permission to
+    // write to it
     if (strcmp(file, thread_current()->executable_filename) == 0)
     {
       file_deny_write(f);
