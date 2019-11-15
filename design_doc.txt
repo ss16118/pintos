@@ -42,13 +42,12 @@ No structs or struct members were edited for this section.
 >> What are the efficiency considerations of your approach?
 
 Every time the stack pointer (esp) is decremented, we check if it is less than
-BASE_LINE, which is minimum valid user address. If the stack pointer is now less
-than BASE_LINE, the setup_stack() function immediately returns false, this
+BASE_LINE, which is the minimum valid user address. If the stack pointer is now
+less than BASE_LINE, the setup_stack() function immediately returns false, this
 prevents something being pushed to the stack that would cause it to overflow the
 user's stack page. The running thread then skips to the "done" tag inside the
 load() function, causing it to also return false. As the load has failed, the
 thread's memory is deallocated and the thread will not run.
-
 
 This also reduces wasted computation as threads that will not run will have its
 memory deallocated and recycled. Checking every stack decrement also reduces the
@@ -106,7 +105,7 @@ This is a new constant representing an erroneous status
       struct list_elem elem;
   };
 
-This is a new struct introduced for threads to keep track of files it has open,
+This is a new struct introduced for threads to keep track of files it has opened,
 and their unique file descriptors this is added to a newly introduced list
 member within the thread struct.
 
@@ -135,7 +134,7 @@ child.
   struct list files;
 
 This is a new list member added to the thread struct to keep track of all the
-files this current thread has open.
+files this current thread has opened.
 
 
   struct list child_waits;
@@ -167,7 +166,7 @@ child thread towards its parent thread.
 
   int child_exit_status;
 
-This is a new int member added to the thread struct which keeps tract of the
+This is a new int member added to the thread struct which keeps track of the
 exit status of the last child to exit. Primarily used for the first kernel
 thread.
 
@@ -184,11 +183,11 @@ current thread's executable file, used to deny write to the file.
 >> within the kernel. 
 
 The new function is_valid_pointer(const void *uaddr) is used to check if the
-given pointer points towards an address within user space, in addition it checks
-if the content of the page table at the given address is not NULL.
+given pointer points towards an address within user space, in addition, it
+checks if the content of the page table at the given address is not NULL.
 
 The above function is used every time we interact with a user given pointer
-within system call context before dereferencing said pointer.
+within the system call context before dereferencing said pointer.
 
 >> B3: (3 marks)
 >> Suppose that we choose to verify user provided pointers by validating them 
@@ -235,14 +234,14 @@ bookmarks possessed by the current thread by calling thread_waiting_child().
 The returned bookmark is stored into the variable child_exit. If child_exit is
 NULL, the process with the given pid is no a child of the current process, at
 which point the current process does not need to wait for the given process and
-should return a SYSCALL_ERROR.
+should return an SYSCALL_ERROR.
 
 If the process with the given pid is a child of the current process, the current
 process then checks whether the child process is still running. As specified in
 section B1, the default value of the child_exit_status member of the
 child_bookmark struct defaults to CHILD_RUNNING. If the child_exit status is not
 this default value when the parent process (current process) checks, then the
-child process must has finished execution prior to this point in time, as such
+child process must have finished execution prior to this point in time, as such
 all the parent process has to do is return the value of the child_exit_status.
 At this point, the parent process will also set the child_exit_status member of
 the bookmark to SYSCALL_ERROR, such that attempting to wait on the same child
