@@ -377,6 +377,10 @@ is not NULL or not in the kernel space and virtual address has already mapped.
 Before corresponding system call function is invoked, each argument that has 
 been passed in will be checked by is_valid_pointer(const void *uaddr); 
 
+The reason we chose this design is it prevents the leakage of resources. When 
+is_valid_pointer() return false, we just exit the process, instead of handling 
+page fault that produced by an invalid pointer.
+
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
 >> descriptors?
