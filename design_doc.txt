@@ -50,7 +50,7 @@ load() function, causing it to also return false. As the load has failed, the
 thread's memory is deallocated and the thread will not run.
 
 
-This also reduces wastes in memory as threads that will not run will have its
+This also reduces wasted computation as threads that will not run will have its
 memory deallocated and recycled. Checking every stack decrement also reduces the
 amount of unnecessary pushes to stack in the event of a failure to push, as it
 returns immediately from the function.
@@ -373,15 +373,13 @@ always free all resources used by the process.
 >> Why did you choose to implement safe access of user memory from the kernel in
 >> the way that you did?
 
-We have implemented the function is_valid_pointer(const void *uaddr) to check
-validity of the pointer that user provided. This function makes sure the address
-is not NULL or not in the kernel space, and the virtual address has already been
-mapped. Before the corresponding system call function is invoked, each argument
-that has been passed in will be checked by is_valid_pointer(const void *uaddr).
-
-The reason we chose this design is it prevents the leakage of resources. When 
-is_valid_pointer() return false, we just exit the process, instead of handling 
-page fault that produced by an invalid pointer.
+Our method does have a higher overhead compared to the second method of editing
+the exception handler, however by checking each of our given pointers prior to
+dereferencing, in the event of an erroneous pointer, we exit the system call
+immediately, as such we avoid the computation that would otherwise be performed
+within the system call. This design choice was made under the assumption that
+unnecessary system calls would be more expensive than the overhead from pointer
+validation.
 
 >> B9: (2 marks)
 >> What advantages and disadvantages can you see to your design for file 
