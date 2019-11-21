@@ -1,6 +1,7 @@
 #ifndef VM_FRAME_H
 #define VM_FRAME_H
 
+#include "list.h"
 /* FRAMES
  
    A frame, sometimes called a physical frame or a page frame, is a continuous
@@ -41,7 +42,6 @@ struct frame_table_entry
     */
 
    struct thread *owner;
-   uint32_t *page;
    uint32_t *frame_addr;
    struct list_elem elem;
 };
