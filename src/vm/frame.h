@@ -31,7 +31,27 @@
 ********************************************************************************
 */
 
+struct frame_table_entry
+{
+   /* Some sort of frame table element, for insertion into frame table. Used
+    * primarily in eviction.
+    * 
+    * thread*     - Pointer to owner process
+    * uint32_t*   - Frame addr
+    */
+
+   struct thread *owner;
+   uint32_t *page;
+   uint32_t *frame_addr;
+   struct list_elem elem;
+};
+
 void frame_init(void);
 
+uint32_t *frame_add_entry(void);
+bool frame_remove_entry(uint32_t *);
+
+// Function to check if frame is present in frame table
+struct frame_table_entry *frame_get_frame(uint32_t *);
 
 #endif /* vm/frame.h */
