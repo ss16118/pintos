@@ -21,7 +21,7 @@ void frame_init(void)
  * @return the pointer to the struct frame_table_entry containing
  * the specific frame address if it exists in the table.
  */
-static struct frame_table_entry *frame_table_lookup(uint32_t *frame_addr)
+static struct frame_table_entry *frame_table_lookup(void *frame_addr)
 {
   for (struct list_elem *e = list_begin(&frame_table);
        e != list_end(&frame_table); e = list_next(e))
@@ -37,28 +37,33 @@ static struct frame_table_entry *frame_table_lookup(uint32_t *frame_addr)
 }
 
 
-
 /**
  * Adds a new entry to the frame table.
+ * @param kpage: the address to the kernel page allocated
+ * by palloc_get_page().
  * @return: the address of the physical frame if the allocation is
  * successful, otherwise, return NULL.
  */
-uint32_t *frame_add_entry(void)
+void *frame_add_entry(void *kpage)
 {
-  uint32_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL)
   {
     struct frame_table_entry *new_entry =
         malloc(sizeof(struct frame_table_entry *));
-    new_entry->frame_addr = kpage - (uint32_t *) PHYS_BASE;
-    new_entry->owner = thread_current();
+    if (new_entry != NULL)
+    {
+      new_entry->frame_addr = vtop(kpage);
+      new_entry->owner = thread_current();
+      lock_acquire(&frame_table_lock);
+      list_push_back(&frame_table, &new_entry->elem);
+      lock_release(&frame_table_lock);
 
-    lock_acquire(&frame_table_lock);
-    list_push_back(&frame_table, &new_entry->elem);
-    lock_release(&frame_table_lock);
-
-    return new_entry->frame_addr;
+      return new_entry->frame_addr;
+    }
   }
+
+  // TODO: ELSE should utilize swap
+
   return NULL;
 }
 
@@ -68,7 +73,7 @@ uint32_t *frame_add_entry(void)
  * Returns true if the removal is successful, false otherwise.
  * @return: a boolean indicating whether the removal is successful.
  */
-bool frame_remove_entry(uint32_t *frame_addr)
+bool frame_remove_entry(void *frame_addr)
 {
   lock_acquire(&frame_table_lock);
   struct frame_table_entry *entry = frame_table_lookup(frame_addr);
@@ -89,7 +94,7 @@ bool frame_remove_entry(uint32_t *frame_addr)
  * @param frame_addr: the frame address to be searched for.
  * @return: the pointer to the struct frame table entry, if it exists.
  */
-struct frame_table_entry *frame_get_frame(uint32_t *frame_addr)
+struct frame_table_entry *frame_get_frame(void *frame_addr)
 {
   return frame_table_lookup(frame_addr);
 }

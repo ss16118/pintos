@@ -42,16 +42,16 @@ struct frame_table_entry
     */
 
    struct thread *owner;
-   uint32_t *frame_addr;
+   void *frame_addr;
    struct list_elem elem;
 };
 
 void frame_init(void);
 
-uint32_t *frame_add_entry(void);
-bool frame_remove_entry(uint32_t *);
+void *frame_add_entry(void *);
+bool frame_remove_entry(void *);
 
 // Function to check if frame is present in frame table
-struct frame_table_entry *frame_get_frame(uint32_t *);
+struct frame_table_entry *frame_get_frame(void *);
 
 #endif /* vm/frame.h */

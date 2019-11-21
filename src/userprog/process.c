@@ -19,6 +19,9 @@
 #include "threads/vaddr.h"
 
 #include "syscall.h"
+#ifdef VM
+#include "vm/frame.h"
+#endif
 
 static uint8_t STACK_SENTINEL = 0;
 
@@ -358,10 +361,6 @@ load (const char *parameters, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
-/* load() helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -452,12 +451,18 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
+
+      // TODO: replace the code below with addition to supplementary page table
+      //       allow page_fault_handler to handle installation of frame
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+
+      void *frame_addr = frame_add_entry(kpage);
+      if (!frame_addr) return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -476,10 +481,11 @@ setup_stack (void **esp, char *parameters)
   bool success = false;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      void *frame_addr = frame_add_entry(kpage);
+      if (success && frame_addr)
         *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
@@ -561,7 +567,7 @@ setup_stack (void **esp, char *parameters)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
