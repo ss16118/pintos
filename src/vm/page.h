@@ -1,6 +1,8 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
 
+#include "lib/kernel/hash.h"
+
 /* PAGES
 
 A page, sometimes called a virtual page, is a continuous region of virtual
@@ -30,7 +32,31 @@ Section A.6 [Virtual Addresses], page 68, for details.
 ********************************************************************************
 */
 
-void page_init(void);
+struct spage_table_entry
+{
+  void *uaddr;
 
+  bool isInstalled;
+  bool isSwapped;
+
+  struct hash_elem hash_elem;
+};
+
+void spage_init(struct hash *);
+
+// Get entry from spage_table
+struct spage_table_entry *spage_get_entry(void *uaddr);
+
+// Added entry to spage_table
+struct spage_table_entry *spage_set_entry(void *uaddr);
+
+// Remove entry to spage_table
+bool spage_remove_entry(void *uaddr);
+
+// Set entry to installed
+bool spage_flip_is_installed(void *uaddr);
+
+// Set entry to swapped
+bool spage_flip_is_swapped(void *uaddr);
 
 #endif /* vm/page.h */

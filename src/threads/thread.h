@@ -107,7 +107,7 @@ struct thread
 
 
 #ifdef USERPROG
-    struct list files;                 /* List of files that have been opened by the 
+    struct list files;                  /* List of files that have been opened by the
                                            current thread */
 
     struct list child_waits;
@@ -119,6 +119,10 @@ struct thread
     struct thread *parent;              /* Current thread's parent thread */
     int child_exit_status;
     char executable_filename[MAX_FILENAME_LEN];
+#endif
+#ifdef VM
+    struct hash spage_table;            /* Hash table supplementary page table
+                                           of pages held by current thread */
 #endif
 
     /*
@@ -162,7 +166,7 @@ void thread_foreach (thread_action_func *, void *);
 
 bool comp_priority(const struct list_elem *a,
                   const struct list_elem *b,
-                  void *aux );
+                  void *aux);
 
 /* Helper function gets a thread from the thread member list_elem 'elem' */
 struct thread* thread_get_thread(const struct list_elem*);
