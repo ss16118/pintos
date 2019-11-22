@@ -38,11 +38,11 @@ struct frame_table_entry
     * primarily in eviction.
     * 
     * thread*     - Pointer to owner process
-    * uint32_t*   - Frame addr
+    * void*       - Frame addr
     */
 
    struct thread *owner;
-   void *frame_addr;
+   void *kpage_addr;
    struct list_elem elem;
 };
 
@@ -53,5 +53,5 @@ bool frame_remove_entry(void *);
 
 // Function to check if frame is present in frame table
 struct frame_table_entry *frame_get_frame(void *);
-
+void frame_free_entries_from_pd(uint32_t *);
 #endif /* vm/frame.h */

@@ -152,6 +152,7 @@ process_exit (void)
        that's been freed (and cleared). */
     cur->pagedir = NULL;
     pagedir_activate (NULL);
+    frame_free_entries_from_pd(pd);
     pagedir_destroy (pd);
   }
 }
@@ -460,6 +461,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
+
 
       void *frame_addr = frame_add_entry(kpage);
       if (!frame_addr) return false;
