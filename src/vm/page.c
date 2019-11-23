@@ -20,9 +20,20 @@ void spage_init(struct hash *spage_table)
   hash_init(spage_table, &spte_hash_func, &spte_less_func, NULL);
 }
 
+/* Retrieves a supplementary page table entry for the given UADDR, or NULL if
+ * the entry does not exist within the current thread's supplementary page
+ * table.
+ * @param uaddr: the user virtual address
+ * @return the pointer to the struct retrieved from the current thread's spage
+ * table, or NULL if the entry does not exit within the spage table.
+ */
 struct spage_table_entry *spage_get_entry(void *uaddr)
 {
   lock_acquire(&spage_lock);
+  /* Create a temporary entry to retrieve the version within the hash table.
+   * Done this way to maintain abstraction and hiding of spage table hash table
+   * implementation.
+   */
   struct spage_table_entry *temp_entry =
                                     malloc(sizeof(struct spage_table_entry *));
   if (temp_entry != NULL)
@@ -45,8 +56,18 @@ struct spage_table_entry *spage_get_entry(void *uaddr)
   return NULL;
 }
 
+/* Creates a new entry within the supplementary page table for the given UADDR.
+   @param uaddr: the user virtual address
+   @return the pointer to the newly created supplementary page table entry or
+    NULL if the creation fails.
+ */
 struct spage_table_entry *spage_set_entry(void *uaddr)
 {
+  /* virtual address already mapped within spage table.
+   * NOTE that a function should never be called on UADDR whilst it is mapped
+   * in the table within normal execution. But should not cause issues for the
+   * wider execution of the process.
+   */
   struct spage_table_entry *spte = spage_get_entry(uaddr);
   if (spte != NULL)
   {
@@ -70,6 +91,12 @@ struct spage_table_entry *spage_set_entry(void *uaddr)
   return NULL;
 }
 
+/* Retrieves and removes the mapping, if it exists within the spage table, for
+ * the given UADDR.
+ * @param uaddr: the user virtual address
+ * @return whether deletion was successful, will return false otherwise. If
+ * entry did not exist, it would count as an unsuccessful deletion.
+ */
 bool spage_remove_entry(void *uaddr)
 {
   struct spage_table_entry *spte = spage_get_entry(uaddr);
@@ -87,6 +114,11 @@ bool spage_remove_entry(void *uaddr)
   return false;
 }
 
+/* Toggles the status of whether the page has a corresponding frame installed.
+ * @param uaddr: the user virtual address
+ * @return if the toggle action was successful, namely if the entry existed
+ * within the current process's spage table.
+ */
 bool spage_flip_is_installed(void *uaddr)
 {
   struct spage_table_entry *spte = spage_get_entry(uaddr);
@@ -99,6 +131,12 @@ bool spage_flip_is_installed(void *uaddr)
   return false;
 }
 
+/* Toggles the status of whether the page's corresponding frame has been swapped
+ * out of memory into a swap slot.
+ * @param uaddr: the user virtual address
+ * @return if the toggle action was successful, namely if the entry existed
+ * within the current process's spage table.
+ */
 bool spage_flip_is_swapped(void *uaddr)
 {
   struct spage_table_entry *spte = spage_get_entry(uaddr);
@@ -111,6 +149,10 @@ bool spage_flip_is_swapped(void *uaddr)
   return false;
 }
 
+/* The hash function for the process supplementary page table hash table
+ * implementation. Made static to abstract and hide the hash table
+ * implementation from process code.
+ */
 static unsigned spte_hash_func(const struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry(e,
@@ -120,6 +162,10 @@ static unsigned spte_hash_func(const struct hash_elem *e, void *aux UNUSED)
   return hash_int((int) spte->uaddr);
 }
 
+/* The comparison function for process supplementary page table two entries.
+ * Made static to abstract and hide the hash table implementation from process
+ * code.
+ */
 static bool spte_less_func(const struct hash_elem *a,
                            const struct hash_elem *b,
                            void *aux UNUSED)
