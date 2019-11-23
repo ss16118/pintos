@@ -247,6 +247,9 @@ thread_create (const char *name, int priority,
   /* Set the new thread's parent to the current thread */
   t->parent = thread_current();
   #endif
+  #ifdef VM
+  spage_init(&t->spage_table);
+  #endif
     
   intr_set_level (old_level);
 
@@ -699,9 +702,6 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->files);
   list_init(&t->child_waits);
   t->child_waiting = TID_ERROR;
-  #endif
-  #ifdef VM
-  spage_init(&t->spage_table);
   #endif
   t->magic = THREAD_MAGIC; 
 

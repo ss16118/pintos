@@ -35,7 +35,7 @@ Section A.6 [Virtual Addresses], page 68, for details.
 struct spage_table_entry
 {
   void *uaddr;
-
+  void *kaddr;
   bool isInstalled;
   bool isSwapped;
 
@@ -44,19 +44,16 @@ struct spage_table_entry
 
 void spage_init(struct hash *);
 
-// Get entry from spage_table
-struct spage_table_entry *spage_get_entry(void *uaddr);
+struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
-// Added entry to spage_table
-struct spage_table_entry *spage_set_entry(void *uaddr);
+struct spage_table_entry *spage_set_entry(struct hash *, void *, void *);
 
-// Remove entry to spage_table
-bool spage_remove_entry(void *uaddr);
+bool spage_remove_entry(struct hash *, void *);
 
-// Set entry to installed
-bool spage_flip_is_installed(void *uaddr);
+bool spage_flip_is_installed(struct hash *, void *);
 
-// Set entry to swapped
-bool spage_flip_is_swapped(void *uaddr);
+bool spage_flip_is_swapped(struct hash *, void *);
+
+void spage_table_destroy(struct hash *);
 
 #endif /* vm/page.h */

@@ -7,7 +7,13 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "userprog/syscall.h"
+#include "userprog/process.h"
+#include "userprog/pagedir.h"
+
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -153,20 +159,67 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* immediate check to avoid unnecessary overhead from io */
-  if (user && (fault_addr >= PHYS_BASE || fault_addr == 0))
-  {
-    exit(SYSCALL_ERROR);
-  }
+  /* A virtual address that is actually invalid should satisfy one or more of the
+     following conditions:
+     1. A NULL pointer
+     2. A kernel address
+     3. An address below the user stack (BASE_LINE)
+     4. An address that does not appear to be a stack access. If the virtual
+        address requested does not appear to be the next contiguous memory page
+        address of the stack.
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+     If the virtual address is valid, allocate a new page in the current thread's
+     page directory, and continue running the current thread.
+   */
+  if (!(fault_addr == NULL || fault_addr > PHYS_BASE || fault_addr < BASE_LINE ||
+      f->esp - fault_addr > sizeof(uint32_t)))
+  {
+    void *user_page = pg_round_down(fault_addr);
+    // Checks if fault_addr is contained in supplementary page table
+    // if it is, install the page
+    struct spage_table_entry *spage_entry =
+        spage_get_entry(&thread_current()->spage_table, user_page);
+    void *new_kpage;
+    if (spage_entry != NULL)
+    {
+      // TODO: check if the page is swapped out
+      if (!spage_entry->isInstalled)
+      {
+        new_kpage = spage_entry->kaddr;
+        spage_entry->isInstalled = true;
+      }
+      else
+      {
+        goto fault;
+      }
+    }
+    else
+    {
+      // When a new page needs to be installed on the user stack.
+      // TODO: check if it has reached the maximum stack size
+      new_kpage = (void *) palloc_get_page(PAL_USER | PAL_ZERO);
+    }
+    
+    if (install_page(user_page, new_kpage, true))
+    {
+      if (!frame_add_entry(new_kpage)) goto fault;
+      return;
+    }
+    else
+    {
+      // TODO: Utilize eviction policy to make sure the page is loaded
+      goto fault;
+    }
+  }
+  else
+  {
+   fault:
+    printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+    kill (f);
+  }
 }
 

@@ -21,6 +21,7 @@
 #include "syscall.h"
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/page.h"
 #endif
 
 static uint8_t STACK_SENTINEL = 0;
@@ -152,6 +153,7 @@ process_exit (void)
        that's been freed (and cleared). */
     cur->pagedir = NULL;
     pagedir_activate (NULL);
+    spage_table_destroy(&thread_current()->spage_table);
     frame_free_entries_from_pd(pd);
     pagedir_destroy (pd);
   }
@@ -338,6 +340,7 @@ load (const char *parameters, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
+                printf("Loading file: %s\n", file_name);
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
@@ -455,16 +458,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       // TODO: replace the code below with addition to supplementary page table
       //       allow page_fault_handler to handle installation of frame
+      spage_set_entry(&thread_current()->spage_table, upage, kpage);
       /* Add the page to the process's address space. */
+      /*
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+      */
 
 
-      void *frame_addr = frame_add_entry(kpage);
-      if (!frame_addr) return false;
+      // void *frame_addr = frame_add_entry(kpage);
+      // if (!frame_addr) return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
