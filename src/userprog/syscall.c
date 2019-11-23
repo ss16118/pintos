@@ -253,7 +253,7 @@ void exit(int status)
  */
 pid_t exec(const char *cmd_line)
 {
-  if (cmd_line == NULL)
+  if (cmd_line == NULL || cmd_line > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
@@ -360,7 +360,7 @@ int wait(pid_t pid)
  */
 bool create(const char *file, unsigned initial_size)
 {
-  if (file == NULL)
+  if (file == NULL || file > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
@@ -422,7 +422,7 @@ bool remove(const char *file)
  */
 int open(const char *file)
 {  
-  if (file == NULL)
+  if (file == NULL || file > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
@@ -508,7 +508,7 @@ int filesize(int fd)
  */
 int read(int fd, void *buffer, unsigned size)
 {
-  if (buffer == NULL)
+  if (buffer == NULL || buffer > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
@@ -558,7 +558,7 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
-  if (buffer == NULL)
+  if (buffer == NULL || buffer > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
