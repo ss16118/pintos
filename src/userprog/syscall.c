@@ -52,7 +52,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  /* If the pointers are not valid, exit process directly */
   if (!(is_valid_pointer(f->esp) && 
         is_valid_pointer((int *) f->esp + 1) &&
         is_valid_pointer((int *) f->esp + 2) &&
@@ -60,6 +59,8 @@ syscall_handler (struct intr_frame *f)
   {
     exit(SYSCALL_ERROR);
   }
+
+  /* If the pointers are not valid, exit process directly */
 
   /* Invoke the corresponding system call function according to the
      stack frame's stack pointer */
@@ -252,11 +253,12 @@ void exit(int status)
  */
 pid_t exec(const char *cmd_line)
 {
-  thread_current()->child_exit_status = CHILD_RUNNING;
-  if (!is_valid_pointer(cmd_line))
+  if (cmd_line == NULL)
   {
     exit(SYSCALL_ERROR);
   }
+
+  thread_current()->child_exit_status = CHILD_RUNNING;
 
   char temp_cmd_line[MAX_ARG_LEN * MAX_PARAM_NUM];
   memcpy(temp_cmd_line, cmd_line, strlen(cmd_line) + 1);
@@ -358,10 +360,11 @@ int wait(pid_t pid)
  */
 bool create(const char *file, unsigned initial_size)
 {
-  if (!is_valid_pointer(file))
+  if (file == NULL)
   {
     exit(SYSCALL_ERROR);
   }
+
   lock_acquire(&filesys_lock);
   if (strcmp(file, "") != 0)
   {
@@ -382,10 +385,11 @@ bool create(const char *file, unsigned initial_size)
  */
 bool remove(const char *file)
 {
-  if (!is_valid_pointer(file))
+  if (file == NULL)
   {
     exit(SYSCALL_ERROR);
   }
+
   lock_acquire(&filesys_lock);
   if (strcmp(file, "") != 0)
   {
@@ -418,10 +422,11 @@ bool remove(const char *file)
  */
 int open(const char *file)
 {  
-  if (!is_valid_pointer(file))
+  if (file == NULL)
   {
     exit(SYSCALL_ERROR);
   }
+
   lock_acquire(&filesys_lock);
 
   struct file *f = filesys_open(file);
@@ -503,7 +508,7 @@ int filesize(int fd)
  */
 int read(int fd, void *buffer, unsigned size)
 {
-  if (!is_valid_pointer(buffer))
+  if (buffer == NULL)
   {
     exit(SYSCALL_ERROR);
   }
@@ -553,7 +558,7 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
-  if (!is_valid_pointer(buffer))
+  if (buffer == NULL)
   {
     exit(SYSCALL_ERROR);
   }

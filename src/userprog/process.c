@@ -340,7 +340,6 @@ load (const char *parameters, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-                printf("Loading file: %s\n", file_name);
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
@@ -458,7 +457,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       // TODO: replace the code below with addition to supplementary page table
       //       allow page_fault_handler to handle installation of frame
-      spage_set_entry(&thread_current()->spage_table, upage, kpage);
+      spage_set_entry(&thread_current()->spage_table,
+                      (void *) upage,
+                      (void *) kpage);
       /* Add the page to the process's address space. */
       /*
       if (!install_page (upage, kpage, writable)) 
@@ -477,6 +478,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
+  // printf("completed load_seg\n\n");
   return true;
 }
 

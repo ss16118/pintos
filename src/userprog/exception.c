@@ -171,10 +171,14 @@ page_fault (struct intr_frame *f)
      If the virtual address is valid, allocate a new page in the current thread's
      page directory, and continue running the current thread.
    */
+  printf("fault_addr: %p   esp: %p\n", fault_addr, f->esp);
+  ptrdiff_t diff = ((char *) f->esp) - ((char *) fault_addr);
+  printf("diff: %d\n", diff - BASE_LINE);
   if (!(fault_addr == NULL || fault_addr > PHYS_BASE || fault_addr < BASE_LINE ||
-      f->esp - fault_addr > sizeof(uint32_t)))
+       diff > PGSIZE))
   {
     void *user_page = pg_round_down(fault_addr);
+    // printf("useraddr: %p\n", user_page);
     // Checks if fault_addr is contained in supplementary page table
     // if it is, install the page
     struct spage_table_entry *spage_entry =
@@ -182,6 +186,7 @@ page_fault (struct intr_frame *f)
     void *new_kpage;
     if (spage_entry != NULL)
     {
+      // PANIC("HERE");
       // TODO: check if the page is swapped out
       if (!spage_entry->isInstalled)
       {
@@ -214,12 +219,19 @@ page_fault (struct intr_frame *f)
   else
   {
    fault:
-    printf ("Page fault at %p: %s error %s page in %s context.\n",
-            fault_addr,
-            not_present ? "not present" : "rights violation",
-            write ? "writing" : "reading",
-            user ? "user" : "kernel");
-    kill (f);
+    if (user)
+    {
+      exit(SYSCALL_ERROR);
+    }
+    else
+    {
+      printf ("Page fault at %p: %s error %s page in %s context.\n",
+              fault_addr,
+              not_present ? "not present" : "rights violation",
+              write ? "writing" : "reading",
+              user ? "user" : "kernel");
+      kill (f);
+    }
   }
 }
 
