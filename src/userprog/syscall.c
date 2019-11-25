@@ -650,7 +650,7 @@ void close(int fd)
 
 mapid_t mmap (int fd , void * addr )
 {
-  if (fd < 2)
+  if (fd < 2 || filesize(fd) == 0 || addr == NULL || addr > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
