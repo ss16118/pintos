@@ -152,6 +152,18 @@ syscall_handler (struct intr_frame *f)
 
       break;
 
+    case SYS_MMAP:
+
+      mmap(*(int *) ((int *) f->esp + 1), *(void **) ((int *) f->esp + 2));
+
+      break;
+
+    case SYS_MUNMAP:
+
+      munmap(*(int *) ((int *) f->esp + 1));
+
+      break;
+
     default:
 
       exit(SYSCALL_ERROR);
@@ -633,4 +645,18 @@ void close(int fd)
     list_remove(&fl->elem);
     free(fl);
   }
+}
+
+
+mapid_t mmap (int fd , void * addr )
+{
+  if (fd < 2)
+  {
+    exit(SYSCALL_ERROR);
+  }
+}
+
+void munmap (mapid_t mapping)
+{
+
 }
