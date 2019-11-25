@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 
 #include "kernel/console.h"
 #include "devices/input.h"
@@ -650,7 +651,14 @@ void close(int fd)
 
 mapid_t mmap (int fd , void * addr )
 {
-  if (fd < 2 || filesize(fd) == 0 || addr == NULL || addr > PHYS_BASE)
+  if (fd < 2 || filesize(fd) == 0 || addr == NULL || addr == 0 || addr > PHYS_BASE)
+  {
+    exit(SYSCALL_ERROR);
+  }
+  int file_size = filesize(fd);
+  int number_of_pages = (file_size - 1) / PGSIZE + 1;
+  void* ptr = palloc_get_multiple(PAL_USER,number_of_pages);
+  if (ptr == NULL)
   {
     exit(SYSCALL_ERROR);
   }
