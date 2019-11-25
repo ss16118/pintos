@@ -649,19 +649,32 @@ void close(int fd)
 }
 
 
-mapid_t mmap (int fd , void * addr )
+mapid_t mmap (int fd , void * addr)
 {
   if (fd < 2 || filesize(fd) == 0 || addr == NULL || addr == 0 || addr > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
+
   int file_size = filesize(fd);
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
-  void* ptr = palloc_get_multiple(PAL_USER,number_of_pages);
-  if (ptr == NULL)
+
+  for (int i = 0; i<number_of_pages; i++)
+  {
+    void * phy_addr =pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE)
+    if (ptr == NULL)
+    {
+      exit(SYSCALL_ERROR);
+    }
+  }
+
+  void* kpage = palloc_get_multiple(PAL_USER,number_of_pages);
+  if (!kpage)
   {
     exit(SYSCALL_ERROR);
   }
+  spage_set_entry(&thread_current()->spage_table, addr, kpage);
+  //TODO add an entry to some sort of data structure
 }
 
 void munmap (mapid_t mapping)

@@ -10,6 +10,6 @@ struct mmap_table_entry
 
 void mmap_init(struct hash*);
 
-struct mmap_table_entry* mmap_get_entry(struct hash *, void *);
+struct mmap_table_entry* mmap_get_entry(int, tid);
 
 void mmap_add_entry(struct hash *, void *);
