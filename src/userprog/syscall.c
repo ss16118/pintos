@@ -661,8 +661,8 @@ mapid_t mmap (int fd , void * addr)
 
   for (int i = 0; i<number_of_pages; i++)
   {
-    void * phy_addr =pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE)
-    if (ptr == NULL)
+    void * phy_addr =pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
+    if (phy_addr == NULL)
     {
       exit(SYSCALL_ERROR);
     }
