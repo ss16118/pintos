@@ -82,7 +82,6 @@ bool frame_remove_entry(void *kpage_addr)
   if (entry != NULL)
   {
     list_remove(&entry->elem);
-    // palloc_free_page(kpage_addr);
     free(entry);
     lock_release(&frame_table_lock);
     return true;

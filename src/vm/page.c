@@ -34,30 +34,29 @@ void spage_init(struct hash *spage_table)
  */
 struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
 {
-  // printf("getting entry, elems in table: %d\n", hash_size(spage_table));
   lock_acquire(&spage_lock);
   /* Create a temporary entry to retrieve the version within the hash table.
    * Done this way to maintain abstraction and hiding of spage table hash table
    * implementation.
    */
-  struct spage_table_entry *temp_entry = malloc(sizeof(struct spage_table_entry *));
-  if (temp_entry != NULL)
+  struct spage_table_entry temp_entry; // = malloc(sizeof(struct spage_table_entry *));
+  // if (temp_entry != NULL)
+  // {
+  temp_entry.uaddr = uaddr;
+  // temp_entry.hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
+  struct hash_elem *spte_elem = hash_find(spage_table,
+                                          &temp_entry.hash_elem);
+  // printf("returned from hash_find\n");
+  if (spte_elem != NULL)
   {
-    temp_entry->uaddr = uaddr;
-    temp_entry->hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
-    struct hash_elem *spte_elem = hash_find(spage_table,
-                                            &temp_entry->hash_elem);
-    // printf("returned from hash_find\n");
-    if (spte_elem != NULL)
-    {
-      struct spage_table_entry *spte = hash_entry(spte_elem,
-                                                  struct spage_table_entry,
-                                                  hash_elem);
-      lock_release(&spage_lock);
-      // printf("getting entry successful\n");
-      return spte;
-    }
+    struct spage_table_entry *spte = hash_entry(spte_elem,
+                                                struct spage_table_entry,
+                                                hash_elem);
+    lock_release(&spage_lock);
+    // printf("getting entry successful\n");
+    return spte;
   }
+  // }
   lock_release(&spage_lock);
   // printf("getting entry failed\n");
   return NULL;
@@ -84,25 +83,24 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
   {
     return spte;
   }
-  spte = malloc(sizeof(struct spage_table_entry *));
-  if (spte != NULL)
+  
+  struct spage_table_entry *new_entry = malloc(sizeof(struct spage_table_entry));
+  if (new_entry != NULL)
   {
-    spte->uaddr = uaddr;
-    spte->kaddr = kaddr;
-    spte->isInstalled = false;
-    spte->isSwapped = false;
-    spte->hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
+    new_entry->uaddr = uaddr;
+    new_entry->kaddr = kaddr;
+    new_entry->isInstalled = false;
+    new_entry->isSwapped = false;
     lock_acquire(&spage_lock);
 
-    if (hash_insert(spage_table, &spte->hash_elem) == NULL)
+    if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
       lock_release(&spage_lock);
-      // printf("set entry successful, elems in table: %d\n", hash_size(spage_table));
-      return spte;
+      return new_entry;
     }
   }
+  
   lock_release(&spage_lock);
-  // printf("set entry failed\n");
   return NULL;
 }
 
@@ -209,9 +207,7 @@ static unsigned spte_hash_func(const struct hash_elem *e, void *aux UNUSED)
   struct spage_table_entry *spte =
       hash_entry(e, struct spage_table_entry, hash_elem);
 
-  // printf("hashaddr: %p\n", spte->uaddr);
   return hash_bytes(&spte->uaddr, sizeof(spte->uaddr));
-  // return (unsigned) ((uint32_t *) &spte->uaddr);
 }
 
 /* The comparison function for process supplementary page table two entries.

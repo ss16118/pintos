@@ -281,7 +281,7 @@ pid_t exec(const char *cmd_line)
   pid_t child_pid = process_execute(temp_cmd_line);
 
   /* Create child wait bookmark in parent thread */
-  struct child_bookmark* child_status = malloc(sizeof(struct child_bookmark));
+  struct child_bookmark* child_status = malloc(sizeof(struct child_bookmark *));
   child_status->child_pid = child_pid;
   list_push_back(&thread_current()->child_waits, &child_status->elem);
 
@@ -342,7 +342,6 @@ int wait(pid_t pid)
       /* Child is still running, wait until it finishes */
       thread_current()->child_waiting = pid;
       sema_down(&thread_current()->wait_for_child);
-
       /* Get child exit status */
       child_exit = thread_waiting_child(&thread_current()->child_waits, pid);
       int child_exit_status = child_exit->child_exit_status;

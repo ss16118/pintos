@@ -39,6 +39,7 @@ struct spage_table_entry
   bool isInstalled;
   bool isSwapped;
 
+  struct hash_elem *hash_elem_pointer;
   struct hash_elem hash_elem;
 };
 
