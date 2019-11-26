@@ -661,18 +661,16 @@ mapid_t mmap(int fd , void *addr)
 
   for (int i = 0; i < number_of_pages; i++)
   {
-
-    void *phy_addr =
-        pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-
-    if (phy_addr == NULL)
+    void *phys_addr =
+                pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
+    if (phys_addr != NULL && spage_get_entry(phys_addr) != NULL)
     {
       exit(SYSCALL_ERROR);
     }
   }
 
   void* kpage = palloc_get_multiple(PAL_USER, number_of_pages);
-  if (!kpage)
+  if (kpage == NULL)
   {
     exit(SYSCALL_ERROR);
   }
