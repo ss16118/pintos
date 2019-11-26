@@ -454,9 +454,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-
-      // TODO: replace the code below with addition to supplementary page table
-      //       allow page_fault_handler to handle installation of frame
       spage_set_entry(&thread_current()->spage_table,
                       (void *) upage,
                       (void *) kpage);

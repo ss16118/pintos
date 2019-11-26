@@ -171,7 +171,7 @@ page_fault (struct intr_frame *f)
      If the virtual address is valid, allocate a new page in the current thread's
      page directory, and continue running the current thread.
    */
-  if (!(fault_addr == NULL || fault_addr > PHYS_BASE || fault_addr < BASE_LINE))
+  if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
     void *user_page = pg_round_down(fault_addr);
     // Checks if fault_addr is contained in supplementary page table
@@ -194,11 +194,21 @@ page_fault (struct intr_frame *f)
     }
     else
     {
-      // When a new page needs to be installed on the user stack.
-      // TODO: check if it has reached the maximum stack size
-      
-      // Checks if fault_addr is in the next contiguous memory page
-      if ((uint32_t) (((char *) f->esp) - ((char *) fault_addr)) < PGSIZE)
+      // Stack Growth
+      // printf("Fault addr %p, Stack ptr addr %p\n", fault_addr, f->esp);
+      // printf("Offset %d\n", (uint32_t) (((char *) f->esp) - ((char *) fault_addr)));
+      // printf("<= MAX_STACK_SIZE: %d\n", (uint32_t) (((char *) PHYS_BASE) -
+         // ((char *) fault_addr)) <= MAX_STACK_SIZE);
+      // bool esplessfault = f->esp < fault_addr;
+      // bool offsetlessmax =  (uint32_t) (((char *) f->esp) - ((char *) fault_addr)) <= MAX_OFFSET;
+      // printf("stk ptr < fault addr: %d\n", esplessfault);
+      // printf("Offset <= MAX_OFFSET %d\n", offsetlessmax);
+      // printf("Cond: %d\n", (esplessfault || offsetlessmax) && (int32_t) (((char *) PHYS_BASE) - ((char *) fault_addr)) <= MAX_STACK_SIZE);
+      // Checks if fault_addr is in the next contiguous memory page and
+      // is less than address for the maximum stack size
+      if ((f->esp < fault_addr ||
+          (uint32_t) (((char *) f->esp) - ((char *) fault_addr)) <= MAX_OFFSET) &&
+          (uint32_t) (((char *) PHYS_BASE) - ((char *) f->esp)) <= MAX_STACK_SIZE)
       {
         new_kpage = (void *) palloc_get_page(PAL_USER | PAL_ZERO);
       }
@@ -207,7 +217,8 @@ page_fault (struct intr_frame *f)
         goto fault;
       }
     }
-    
+
+    // Load in the page
     if (install_page(user_page, new_kpage, true))
     {
       if (!frame_add_entry(new_kpage)) goto fault;

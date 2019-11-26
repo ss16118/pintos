@@ -648,9 +648,10 @@ void close(int fd)
 }
 
 
-mapid_t mmap (int fd , void * addr)
+mapid_t mmap(int fd , void *addr)
 {
-  if (fd < 2 || filesize(fd) == 0 || addr == NULL || addr == 0 || addr > PHYS_BASE)
+  if (fd < 2 || filesize(fd) == 0 || addr == NULL
+      || addr == 0 || addr > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
   }
@@ -658,16 +659,19 @@ mapid_t mmap (int fd , void * addr)
   int file_size = filesize(fd);
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
 
-  for (int i = 0; i<number_of_pages; i++)
+  for (int i = 0; i < number_of_pages; i++)
   {
-    void * phy_addr =pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
+
+    void *phy_addr =
+        pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
+
     if (phy_addr == NULL)
     {
       exit(SYSCALL_ERROR);
     }
   }
 
-  void* kpage = palloc_get_multiple(PAL_USER,number_of_pages);
+  void* kpage = palloc_get_multiple(PAL_USER, number_of_pages);
   if (!kpage)
   {
     exit(SYSCALL_ERROR);
