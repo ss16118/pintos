@@ -5,6 +5,7 @@
 #include "threads/vaddr.h"
 #include "threads/init.h"
 #include "threads/pte.h"
+#include "threads/malloc.h"
 
 static struct list frame_table;
 static struct lock frame_table_lock;

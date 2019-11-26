@@ -70,7 +70,7 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
  * NULL if the creation fails.
  */
 struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
-                                          void *kaddr)
+                                          void *kaddr, bool isCodeSegment)
 {
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
@@ -91,6 +91,7 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->kaddr = kaddr;
     new_entry->isInstalled = false;
     new_entry->isSwapped = false;
+    new_entry->isCodeSegment = isCodeSegment;
     lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)

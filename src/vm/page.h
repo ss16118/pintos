@@ -36,10 +36,11 @@ struct spage_table_entry
 {
   void *uaddr;
   void *kaddr;
+
+  bool isCodeSegment;
   bool isInstalled;
   bool isSwapped;
 
-  struct hash_elem *hash_elem_pointer;
   struct hash_elem hash_elem;
 };
 
@@ -47,7 +48,7 @@ void spage_init(struct hash *);
 
 struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
-struct spage_table_entry *spage_set_entry(struct hash *, void *, void *);
+struct spage_table_entry *spage_set_entry(struct hash *, void *, void *, bool);
 
 bool spage_remove_entry(struct hash *, void *);
 
