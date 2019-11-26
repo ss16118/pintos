@@ -1,15 +1,15 @@
-#include "lib/kernel/hash.h"
+#include "lib/kernel/list.h"
 
-struct mmap_table_entry
+struct mmap_list_entry
 {
     int fd;
     tid owner;
     void *addr;
-    struct hash_elem hash_elem;
+    struct list_elem elem;
 }
 
-void mmap_init(struct hash*);
+void mmap_init(struct list *);
 
-struct mmap_table_entry* mmap_get_entry(int, tid);
+struct mmap_list_entry* mmap_get_entry(int, tid);
 
-void mmap_add_entry(struct hash *, void *);
+void mmap_add_entry(struct list *, void *);
