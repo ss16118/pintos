@@ -445,9 +445,11 @@ int open(const char *file)
   if (f != NULL)
   {
     int fd = file_desc_count++;
-    struct file_fd *fl = malloc(sizeof(struct file_fd *));
+    struct file_fd *fl = malloc(sizeof(struct file_fd));
     fl->fd = fd;
     fl->file = f;
+    fl->uaddr = NULL;
+    fl->is_dirty = NULL;
 
     // If the name of the executable file opened matches that of the
     // executable file of the current process, deny the permission to
@@ -531,9 +533,25 @@ int read(int fd, void *buffer, unsigned size)
     struct file_fd *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
-      int bytes_read = file_read(fl->file, buffer, size);
-      lock_release(&filesys_lock);
-      return bytes_read;
+      if (fl->uaddr == NULL)
+      {
+        int bytes_read = file_read(fl->file, buffer, size);
+        lock_release(&filesys_lock);
+        return bytes_read;
+      }
+      else
+      {
+        struct file* file_ptr = fl->file;
+        if (file_tell(fl->file) + size > file_length(fl->file))
+        {
+          lock_release(&filesys_lock);
+          exit(SYSCALL_ERROR);
+        }
+        memcpy(buffer, fl->uaddr, size);
+        lock_release(&filesys_lock);
+        return size;
+        //TODO read from mapped memory
+      }
     }
   }
   else if (fd == STDIN_FILENO)
@@ -663,7 +681,7 @@ mapid_t mmap(int fd , void *addr)
   {
     void *phys_addr =
                 pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-    if (phys_addr != NULL && spage_get_entry(phys_addr) != NULL)
+    if (phys_addr != NULL && spage_get_entry(addr + i * PGSIZE ) != NULL)
     {
       exit(SYSCALL_ERROR);
     }
@@ -672,10 +690,16 @@ mapid_t mmap(int fd , void *addr)
   void* kpage = palloc_get_multiple(PAL_USER, number_of_pages);
   if (kpage == NULL)
   {
+    palloc_free_multiple(kpage,number_of_pages);
     exit(SYSCALL_ERROR);
   }
   spage_set_entry(&thread_current()->spage_table, addr, kpage);
-  //TODO add an entry to some sort of data structure
+
+  struct file_fd *fl = get_file_elem_from_fd(fd);
+
+  fl->uaddr = addr;
+
+  return fd;
 }
 
 void munmap (mapid_t mapping)
