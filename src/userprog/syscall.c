@@ -693,7 +693,7 @@ mapid_t mmap(int fd , void *addr)
     palloc_free_multiple(kpage,number_of_pages);
     exit(SYSCALL_ERROR);
   }
-  spage_set_entry(&thread_current()->spage_table, addr, kpage);
+  spage_set_entry(&thread_current()->spage_table, addr, kpage, true, true);
 
   struct file_fd *fl = get_file_elem_from_fd(fd);
 

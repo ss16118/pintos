@@ -222,6 +222,12 @@ page_fault (struct intr_frame *f)
     if (install_page(user_page, new_kpage, true))
     {
       if (!frame_add_entry(new_kpage)) goto fault;
+
+      if (spage_entry->is_file)
+      {
+          // int size = filesize(spage_entry->fd);
+          // load_segment(spage_entry->file, spage_entry->uaddr, size, PGSIZE - ())
+      }
       return;
     }
     else
