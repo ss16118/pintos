@@ -37,7 +37,8 @@ struct spage_table_entry
   void *uaddr;
   void *kaddr;
 
-  bool is_writable;
+
+  bool writable;
   bool isInstalled;
   bool isSwapped;
 
@@ -59,5 +60,7 @@ bool spage_flip_is_installed(struct hash *, void *);
 bool spage_flip_is_swapped(struct hash *, void *);
 
 void spage_table_destroy(struct hash *);
+
+void spage_table_set_code_segment_read_only(struct hash *);
 
 #endif /* vm/page.h */

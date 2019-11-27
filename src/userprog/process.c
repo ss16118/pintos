@@ -73,7 +73,6 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-
   /* Thread will wake parent thread if all of the following conditions are true
 
     - it has successfully loaded the stack
@@ -455,7 +454,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       spage_set_entry(&thread_current()->spage_table, (void *) upage,
-                      (void *) kpage, true, false);
+
+                      (void *) kpage, writable, false);
+
+                      (void *) kpage, writable);
+      // printf("Created spage table entry for %p\n", kpage);
       /* Add the page to the process's address space. */
       /*
       if (!install_page (upage, kpage, writable)) 
@@ -463,7 +466,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
-      */
+        */
+      
 
 
       // void *frame_addr = frame_add_entry(kpage);
@@ -560,7 +564,6 @@ setup_stack (void **esp, char *parameters)
   *esp -= sizeof(int);
   if (*esp < BASE_LINE) return false;
   memset(*esp, null_pointer, sizeof(int *));
-
   return (success && (*esp > BASE_LINE));
 }
 

@@ -5,6 +5,8 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 #include "page.h"
 
 
@@ -70,7 +72,8 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
  * NULL if the creation fails.
  */
 struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
-                                          void *kaddr, bool is_writable, bool is_file)
+                                          void *kaddr, bool writable, bool is_file)
+
 {
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
@@ -83,7 +86,6 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
   {
     return spte;
   }
-  
   struct spage_table_entry *new_entry = malloc(sizeof(struct spage_table_entry));
   if (new_entry != NULL)
   {
@@ -91,8 +93,10 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->kaddr = kaddr;
     new_entry->isInstalled = false;
     new_entry->isSwapped = false;
-    new_entry->is_writable = is_writable;
+
+    new_entry->is_writable = writable;
     new_entry->is_file = is_file;
+    
     lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
@@ -101,7 +105,7 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
       return new_entry;
     }
   }
-  
+  palloc_free_page(kaddr);
   lock_release(&spage_lock);
   return NULL;
 }
@@ -167,7 +171,6 @@ bool spage_flip_is_swapped(struct hash *spage_table, void *uaddr)
   return false;
 }
 
-
 /**
  * Frees all the resources allocated to a supplemental page table.
  * @param spage_table
@@ -197,8 +200,6 @@ static void spage_table_entry_destroy(struct hash_elem *e, void *aux UNUSED)
     free(entry);
   }
 }
-
-
 
 /* The hash function for the process supplementary page table hash table
  * implementation. Made static to abstract and hide the hash table

@@ -136,7 +136,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-   
+
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -158,7 +158,6 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
   /* A virtual address that is actually invalid should satisfy one or more of the
      following conditions:
      1. A NULL pointer
@@ -173,11 +172,13 @@ page_fault (struct intr_frame *f)
    */
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
+    // printf("Fault addr: %p\n", fault_addr);
     void *user_page = pg_round_down(fault_addr);
     // Checks if fault_addr is contained in supplementary page table
     // if it is, install the page
     struct spage_table_entry *spage_entry =
         spage_get_entry(&thread_current()->spage_table, user_page);
+    bool writable = true;
     void *new_kpage;
     if (spage_entry != NULL)
     {
@@ -186,40 +187,37 @@ page_fault (struct intr_frame *f)
       {
         new_kpage = spage_entry->kaddr;
         spage_entry->isInstalled = true;
-      }
-      else
-      {
-        goto fault;
+        writable = spage_entry->writable;
       }
     }
     else
     {
       // Stack Growth
-      // printf("Fault addr %p, Stack ptr addr %p\n", fault_addr, f->esp);
-      // printf("Offset %d\n", (uint32_t) (((char *) f->esp) - ((char *) fault_addr)));
-      // printf("<= MAX_STACK_SIZE: %d\n", (uint32_t) (((char *) PHYS_BASE) -
-         // ((char *) fault_addr)) <= MAX_STACK_SIZE);
-      // bool esplessfault = f->esp < fault_addr;
-      // bool offsetlessmax =  (uint32_t) (((char *) f->esp) - ((char *) fault_addr)) <= MAX_OFFSET;
-      // printf("stk ptr < fault addr: %d\n", esplessfault);
-      // printf("Offset <= MAX_OFFSET %d\n", offsetlessmax);
-      // printf("Cond: %d\n", (esplessfault || offsetlessmax) && (int32_t) (((char *) PHYS_BASE) - ((char *) fault_addr)) <= MAX_STACK_SIZE);
       // Checks if fault_addr is in the next contiguous memory page and
       // is less than address for the maximum stack size
-      if ((f->esp < fault_addr ||
-          (uint32_t) (((char *) f->esp) - ((char *) fault_addr)) <= MAX_OFFSET) &&
-          (uint32_t) (((char *) PHYS_BASE) - ((char *) f->esp)) <= MAX_STACK_SIZE)
+      
+      void *stk_ptr = f->esp > PHYS_BASE || f->esp < BASE_LINE ? thread_current()->saved_stk_ptr : f->esp;
+      bool fault_addr_in_next_page = 
+          (uint32_t) (((char *) stk_ptr) - ((char *) fault_addr)) <= MAX_OFFSET;
+      bool below_max_stk_size = (int32_t) (((char *) PHYS_BASE) - ((char *) stk_ptr)) <= MAX_STACK_SIZE;
+      // printf("Actual stack pointer: %p\n", f->esp);
+      // printf("Stack pointer: %p, fault addr %p\n", stk_ptr, user_page);
+      // printf("Stk ptr < fault addr: %d\n", stk_ptr < fault_addr);
+      // printf("Fault addr in next page: %d\n", fault_addr_in_next_page);
+      // printf("below_max_stk_size: %d\n", below_max_stk_size);
+      if ((stk_ptr < fault_addr || fault_addr_in_next_page) && below_max_stk_size)
       {
         new_kpage = (void *) palloc_get_page(PAL_USER | PAL_ZERO);
+        if (!new_kpage) goto fault;
       }
       else
       {
+        // printf("Adding page to stack failed: %p\n", user_page);
         goto fault;
       }
     }
 
-    // Load in the page
-    if (install_page(user_page, new_kpage, true))
+    if (install_page(user_page, new_kpage, writable))
     {
       if (!frame_add_entry(new_kpage)) goto fault;
 
@@ -227,12 +225,14 @@ page_fault (struct intr_frame *f)
       {
           // int size = filesize(spage_entry->fd);
           // load_segment(spage_entry->file, spage_entry->uaddr, size, PGSIZE - ())
+
       }
       return;
     }
     else
     {
       // TODO: Utilize eviction policy to make sure the page is loaded
+      // printf("The page %p already exists\n", user_page);
       goto fault;
     }
   }
