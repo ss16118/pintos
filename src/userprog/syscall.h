@@ -21,6 +21,8 @@ bool remove(const char *file);
 struct file_fd
 {
     int fd;                     /* unique file descriptor */
+    void * uaddr;               /* mmaped location */
+    bool is_dirty;              /* file has been edited in memory */
     struct file *file;          /* the opened file */
     struct list_elem elem;
 };
