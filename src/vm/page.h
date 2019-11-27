@@ -37,7 +37,6 @@ struct spage_table_entry
   void *uaddr;
   void *kaddr;
 
-
   bool writable;
   bool isInstalled;
   bool isSwapped;

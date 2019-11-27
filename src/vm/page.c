@@ -7,6 +7,7 @@
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
+#include "filesys/file.h"
 #include "page.h"
 
 
@@ -94,9 +95,9 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->isInstalled = false;
     new_entry->isSwapped = false;
 
-    new_entry->is_writable = writable;
+    new_entry->writable = writable;
     new_entry->is_file = is_file;
-    
+
     lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
@@ -122,12 +123,14 @@ bool spage_remove_entry(struct hash *spage_table, void *uaddr)
   struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
   lock_acquire(&spage_lock);
   if (spte != NULL)
-  {
+  { 
     if (hash_delete(spage_table, &spte->hash_elem) != NULL)
     {
+      pagedir_clear_page(thread_current()->pagedir, uaddr);
+      palloc_free_page(spte->kaddr);
       free(spte);
       lock_release(&spage_lock);
-      return true; 
+      return true;
     }
   }
   lock_release(&spage_lock);

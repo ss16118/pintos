@@ -454,10 +454,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       spage_set_entry(&thread_current()->spage_table, (void *) upage,
-
                       (void *) kpage, writable, false);
-
-                      (void *) kpage, writable);
       // printf("Created spage table entry for %p\n", kpage);
       /* Add the page to the process's address space. */
       /*

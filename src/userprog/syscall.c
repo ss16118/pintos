@@ -161,7 +161,7 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_MMAP:
 
-      mmap(*(int *) ((int *) f->esp + 1), *(void **) ((int *) f->esp + 2));
+      f->eax = mmap(*(int *) ((int *) f->esp + 1), *(void **) ((int *) f->esp + 2));
 
       break;
 
@@ -455,7 +455,7 @@ int open(const char *file)
     fl->fd = fd;
     fl->file = f;
     fl->uaddr = NULL;
-    fl->is_dirty = NULL;
+    fl->is_dirty = false;
 
     // If the name of the executable file opened matches that of the
     // executable file of the current process, deny the permission to
@@ -491,6 +491,27 @@ static struct file_fd *get_file_elem_from_fd(int fd)
     {
       struct file_fd *fl = list_entry(e, struct file_fd, elem);
       if (fl != NULL && fl->fd == fd)
+      {
+        intr_set_level(old_level);
+        return fl;
+      }
+    }
+  }
+  intr_set_level(old_level);
+  return NULL;
+}
+
+static struct file_fd *get_file_elem_from_address(void * addr)
+{
+  enum intr_level old_level = intr_disable();
+  if (!list_empty(&thread_current()->files))
+  {
+    for (struct list_elem *e = list_begin(&thread_current()->files);
+        e != list_end(&thread_current()->files);
+        e = list_next(e))
+    {
+      struct file_fd *fl = list_entry(e, struct file_fd, elem);
+      if (fl != NULL && fl->uaddr == addr)
       {
         intr_set_level(old_level);
         return fl;
@@ -611,6 +632,7 @@ int write(int fd, const void *buffer, unsigned size)
   if (fl != NULL)
   {
     int result = file_write(fl->file, buffer, size);
+    fl->is_dirty = true;
     lock_release(&filesys_lock);
     return result;
   }
@@ -695,22 +717,63 @@ mapid_t mmap(int fd , void *addr)
     }
   }
 
+  struct file* file = get_file_elem_from_fd(fd)->file;
+
   void* kpage = palloc_get_multiple(PAL_USER, number_of_pages);
+
   if (kpage == NULL)
   {
-    palloc_free_multiple(kpage,number_of_pages);
+    palloc_free_multiple(kpage, number_of_pages);
     exit(SYSCALL_ERROR);
   }
-  spage_set_entry(&thread_current()->spage_table, addr, kpage, false, true);
+
+  if (file_read (file, kpage, file_size) != file_size)
+  {
+    palloc_free_multiple(kpage, number_of_pages);
+    exit(SYSCALL_ERROR);
+  }
+
+  memset(kpage + file_size, 0, PGSIZE - (file_size % PGSIZE));
+  for (int i = 0; i < number_of_pages; i++)
+  {
+    spage_set_entry(&thread_current()->spage_table, addr + PGSIZE * i, 
+                    kpage + PGSIZE * i, false, true);
+  }  
 
   struct file_fd *fl = get_file_elem_from_fd(fd);
 
   fl->uaddr = addr;
-
   return fd;
 }
 
 void munmap (mapid_t mapping)
 {
+  int fd = mapping;
 
+  struct file_fd* fl = get_file_elem_from_fd(fd);
+  
+  if (fl == NULL)
+  {
+    exit(SYSCALL_ERROR);
+  }
+
+  int file_size = file_length(fl->file);
+  int number_of_pages = (file_size - 1) / PGSIZE + 1;
+  if (fl->is_dirty)
+  {
+    void *kpage = pagedir_get_page(thread_current()->pagedir, fl->uaddr);
+    if (!kpage) exit(SYSCALL_ERROR);
+    
+    if (!file_write(fl->file, kpage, file_size))
+    {
+      exit(SYSCALL_ERROR);
+    }
+  }
+
+  fl->uaddr = NULL;
+  fl->is_dirty = false;
+  for (int i = 0; i < number_of_pages; i++)
+  {
+    spage_remove_entry(&thread_current()->spage_table, fl->uaddr + i * PGSIZE);
+  }
 }

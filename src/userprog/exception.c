@@ -170,9 +170,9 @@ page_fault (struct intr_frame *f)
      If the virtual address is valid, allocate a new page in the current thread's
      page directory, and continue running the current thread.
    */
+  //printf("Fault addr: %p\n", fault_addr);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
-    // printf("Fault addr: %p\n", fault_addr);
     void *user_page = pg_round_down(fault_addr);
     // Checks if fault_addr is contained in supplementary page table
     // if it is, install the page
@@ -212,20 +212,17 @@ page_fault (struct intr_frame *f)
       }
       else
       {
-        // printf("Adding page to stack failed: %p\n", user_page);
+        //printf("Adding page to stack failed: %p\n", user_page);
         goto fault;
       }
     }
 
     if (install_page(user_page, new_kpage, writable))
     {
-      if (!frame_add_entry(new_kpage)) goto fault;
-
-      if (spage_entry->is_file)
+      if (!frame_add_entry(new_kpage)) 
       {
-          // int size = filesize(spage_entry->fd);
-          // load_segment(spage_entry->file, spage_entry->uaddr, size, PGSIZE - ())
-
+        //printf("Frame add entry failed\n");
+        goto fault;
       }
       return;
     }
@@ -242,4 +239,12 @@ page_fault (struct intr_frame *f)
     exit(SYSCALL_ERROR);
   }
 }
+
+// back up
+      // if (spage_entry->is_file)
+      // {
+      //     struct file_fd * file_fd = get_file_elem_from_address(user_page);
+      //     int size = filesize(file_fd->fd);
+      //     load_segment(file_fd->file, spage_entry->uaddr, size, PGSIZE - (size % PGSIZE), writable);
+      // }
 

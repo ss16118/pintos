@@ -35,6 +35,9 @@ struct child_bookmark
     struct list_elem elem;
 };
 
+static struct file_fd *get_file_elem_from_address(void * addr);
+static struct file_fd *get_file_elem_from_fd(int fd);
+
 int open(const char *file);
 int filesize(int fd);
 int read(int fd, void *buffer, unsigned size);
