@@ -123,6 +123,7 @@ struct thread
 #ifdef VM
     struct hash spage_table;            /* Hash table supplementary page table
                                            of pages held by current thread */
+    void *saved_stk_ptr;
 #endif
 
     /*

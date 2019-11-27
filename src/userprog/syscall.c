@@ -22,6 +22,8 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 
+#include "vm/page.h"
+
 #define WORD 4
 
 static void syscall_handler (struct intr_frame *);
@@ -67,6 +69,10 @@ syscall_handler (struct intr_frame *f)
      stack frame's stack pointer */
 
   int syscall_num = *(int *) f->esp;
+
+  // Saves the current stack pointer in case of transition from
+  // user mode to kernel mode in a page fault
+  thread_current()->saved_stk_ptr = f->esp;
 
   switch (syscall_num)
   {
@@ -570,6 +576,7 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
+
   if (buffer == NULL || buffer > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
@@ -663,7 +670,8 @@ mapid_t mmap(int fd , void *addr)
   {
     void *phys_addr =
                 pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-    if (phys_addr != NULL && spage_get_entry(phys_addr) != NULL)
+    if (phys_addr != NULL &&
+        spage_get_entry(&thread_current()->spage_table, phys_addr) != NULL)
     {
       exit(SYSCALL_ERROR);
     }
@@ -674,7 +682,7 @@ mapid_t mmap(int fd , void *addr)
   {
     exit(SYSCALL_ERROR);
   }
-  spage_set_entry(&thread_current()->spage_table, addr, kpage);
+  spage_set_entry(&thread_current()->spage_table, addr, kpage, false);
   //TODO add an entry to some sort of data structure
 }
 
