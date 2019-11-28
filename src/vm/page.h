@@ -1,6 +1,6 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
-
+#include "filesys/off_t.h"
 #include "lib/kernel/hash.h"
 
 /* PAGES
@@ -42,7 +42,8 @@ struct spage_table_entry
   bool isSwapped;
 
   bool is_file;
-
+  off_t accessd_bit;
+  off_t dirty_bit;
   struct hash_elem hash_elem;
 };
 

@@ -12,8 +12,6 @@ static size_t swap_slot_count;
 static void read_from_block(block_sector_t, void *);
 static void write_from_block(block_sector_t, void *);
 static block_sector_t swap_index_to_sector(swap_index);
-
-void swap_init(void) 
 {
   lock_init(&swap_lock);
   swap_blocks = block_get_role(BLOCK_SWAP);
