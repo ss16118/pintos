@@ -1,7 +1,12 @@
+#include "devices/block.h"
+
+#include "threads/vaddr.h"
+
 #ifndef VM_SWAP_H
 #define VM_SWAP_H
-#include "devices/block.h"
-#include "threads/vaddr.h"
+
+typedef size_t swap_index;
+
 /* SWAP SLOTS
  * 
  * A swap slot is a continuous, page-size region of disk space in the swap
@@ -14,7 +19,9 @@
 
 void swap_init(void);
 
-void read_from_block(block_sector_t, void *);
-void write_from_block(block_sector_t, void *);
+bool swap_has_free_slots();
+swap_index swap_get_free_slots();
+swap_index swap_frame_to_slot(void *);
+void swap_slot_to_frame(swap_index, void *);
 
 #endif /* vm/swap.h */
