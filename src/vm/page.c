@@ -8,6 +8,7 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
+#include "filesys/off_t.h"
 #include "page.h"
 
 
@@ -97,7 +98,10 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
 
     new_entry->writable = writable;
     new_entry->is_file = is_file;
-
+    new_entry->accessd_bit = 1;
+    if(writable){
+      new_entry->dirty_bit = 1;
+    }
     lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)

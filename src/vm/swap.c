@@ -1,10 +1,12 @@
 #include "swap.h"
 
 static struct block *swap_blocks;
+static struct lock swap_lock;
 
 void swap_init(void) 
 {
   swap_blocks = block_get_role(BLOCK_SWAP);
+  lock_init(&swap_lock);
 }
 
 /**
@@ -15,7 +17,7 @@ void read_from_block(block_sector_t sector, void *frame)
 {
   for (int i = 0; i < SECTORS_PER_PAGE; i++)
   {
-    block_read(swap_blocks, secotr + i, frame + (i * BLOCK_SECTOR_SIZE));
+    block_read(swap_blocks, sector + i, frame + (i * BLOCK_SECTOR_SIZE));
   }
 }
 
@@ -27,7 +29,7 @@ void write_from_block(block_sector_t sector, void *frame)
 {
   for (int i = 0; i < SECTORS_PER_PAGE; i++)
   {
-    block_write(swap_blocks, secotr + i, frame + (i * BLOCK_SECTOR_SIZE));
+    block_write(swap_blocks, sector + i, frame + (i * BLOCK_SECTOR_SIZE));
   }
 }
 
