@@ -1,6 +1,6 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
-#include "filesys/off_t.h"
+#include "filesys/file.h"
 #include "lib/kernel/hash.h"
 
 /* PAGES
@@ -35,15 +35,13 @@ Section A.6 [Virtual Addresses], page 68, for details.
 struct spage_table_entry
 {
   void *uaddr;
-  void *kaddr;
 
   bool writable;
-  bool isInstalled;
-  bool isSwapped;
+  bool is_installed;
+  bool is_swapped;
 
-  bool is_file;
-  off_t accessd_bit;
-  off_t dirty_bit;
+  struct file* file;
+  off_t ofs;
   struct hash_elem hash_elem;
 };
 
@@ -51,7 +49,7 @@ void spage_init(struct hash *);
 
 struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
-struct spage_table_entry *spage_set_entry(struct hash *, void *, void *, bool, bool);
+struct spage_table_entry *spage_set_entry(struct hash *, void *, struct file *, off_t, bool);
 
 bool spage_remove_entry(struct hash *, void *);
 

@@ -2,6 +2,7 @@
 #define VM_FRAME_H
 
 #include "list.h"
+#include "page.h"
 /* FRAMES
  
    A frame, sometimes called a physical frame or a page frame, is a continuous
@@ -48,7 +49,7 @@ struct frame_table_entry
 
 void frame_init(void);
 
-void *frame_add_entry(void *);
+void *frame_add_entry(struct spage_table_entry *);
 bool frame_remove_entry(void *);
 
 // Function to check if frame is present in frame table

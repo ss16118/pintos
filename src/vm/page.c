@@ -1,7 +1,6 @@
 #include <debug.h>
 
 #include "threads/malloc.h"
-#include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -74,8 +73,7 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
  * NULL if the creation fails.
  */
 struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
-                                          void *kaddr, bool writable, bool is_file)
-
+                                          struct file* file, off_t ofs, bool writable)
 {
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
@@ -89,28 +87,24 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     return spte;
   }
   struct spage_table_entry *new_entry = malloc(sizeof(struct spage_table_entry));
+
   if (new_entry != NULL)
   {
     new_entry->uaddr = uaddr;
-    new_entry->kaddr = kaddr;
-    new_entry->isInstalled = false;
-    new_entry->isSwapped = false;
-
+    new_entry->is_installed = false;
+    new_entry->is_swapped = false;
+    new_entry->file = file;
+    new_entry->ofs = ofs;
     new_entry->writable = writable;
-    new_entry->is_file = is_file;
-    new_entry->accessd_bit = 1;
-    if(writable){
-      new_entry->dirty_bit = 1;
-    }
     lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
       lock_release(&spage_lock);
+      printf("Spte set for %p\n", uaddr);
       return new_entry;
     }
   }
-  palloc_free_page(kaddr);
   lock_release(&spage_lock);
   return NULL;
 }
@@ -131,7 +125,6 @@ bool spage_remove_entry(struct hash *spage_table, void *uaddr)
     if (hash_delete(spage_table, &spte->hash_elem) != NULL)
     {
       pagedir_clear_page(thread_current()->pagedir, uaddr);
-      palloc_free_page(spte->kaddr);
       free(spte);
       lock_release(&spage_lock);
       return true;
@@ -153,7 +146,7 @@ bool spage_flip_is_installed(struct hash *spage_table, void *uaddr)
   lock_acquire(&spage_lock);
   if (spte != NULL)
   {
-    spte->isInstalled = !spte->isInstalled;
+    spte->is_installed = !spte->is_installed;
     return true;
   }
   return false;
@@ -172,7 +165,7 @@ bool spage_flip_is_swapped(struct hash *spage_table, void *uaddr)
   lock_acquire(&spage_lock);
   if (spte != NULL)
   {
-    spte->isSwapped = !spte->isSwapped;
+    spte->is_swapped = !spte->is_swapped;
     return true;
   }
   return false;
@@ -200,10 +193,6 @@ static void spage_table_entry_destroy(struct hash_elem *e, void *aux UNUSED)
 
   if (entry != NULL)
   {
-    if (!entry->isInstalled)
-    {
-      palloc_free_page(entry->kaddr);
-    }
     free(entry);
   }
 }
