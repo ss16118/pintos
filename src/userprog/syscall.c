@@ -28,9 +28,11 @@
 
 static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
+static struct file_mmap *get_file_mmap(mapid_t);
+static struct file_fd *get_file_elem_from_fd(int fd);
 static int file_desc_count = 2;
 static struct lock filesys_lock;
-
+static struct list file_mappings;
 /*
  * Checks if the pointer is a valid pointer. It is implemented with
  * pagedir_get_page() and is_user_vaddr().
@@ -50,6 +52,7 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&filesys_lock);
+  list_init(&file_mappings);
 }
 
 static void
@@ -69,7 +72,6 @@ syscall_handler (struct intr_frame *f)
      stack frame's stack pointer */
 
   int syscall_num = *(int *) f->esp;
-
   // Saves the current stack pointer in case of transition from
   // user mode to kernel mode in a page fault
   thread_current()->saved_stk_ptr = f->esp;
@@ -454,9 +456,7 @@ int open(const char *file)
     struct file_fd *fl = malloc(sizeof(struct file_fd));
     fl->fd = fd;
     fl->file = f;
-    fl->uaddr = NULL;
-    fl->is_dirty = false;
-
+    strlcpy(fl->file_name, file, MAX_FILENAME_LEN);
     // If the name of the executable file opened matches that of the
     // executable file of the current process, deny the permission to
     // write to it
@@ -501,21 +501,23 @@ static struct file_fd *get_file_elem_from_fd(int fd)
   return NULL;
 }
 
-static struct file_fd *get_file_elem_from_address(void * addr)
+/**
+ * Obtains the struct file_mmap of the given mapping id.
+ * If the list does not contain the element with the id,
+ * return NULL.
+ */
+static struct file_mmap *get_file_mmap(mapid_t mapping)
 {
   enum intr_level old_level = intr_disable();
-  if (!list_empty(&thread_current()->files))
+
+  for (struct list_elem *e = list_begin(&file_mappings);
+       e != list_end(&file_mappings); e = list_next(e))
   {
-    for (struct list_elem *e = list_begin(&thread_current()->files);
-        e != list_end(&thread_current()->files);
-        e = list_next(e))
+    struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
+    if (fm->map_id == mapping)
     {
-      struct file_fd *fl = list_entry(e, struct file_fd, elem);
-      if (fl != NULL && fl->uaddr == addr)
-      {
-        intr_set_level(old_level);
-        return fl;
-      }
+      intr_set_level(old_level);
+      return fm;
     }
   }
   intr_set_level(old_level);
@@ -560,25 +562,9 @@ int read(int fd, void *buffer, unsigned size)
     struct file_fd *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
-      if (fl->uaddr == NULL)
-      {
-        int bytes_read = file_read(fl->file, buffer, size);
-        lock_release(&filesys_lock);
-        return bytes_read;
-      }
-      else
-      {
-        struct file* file_ptr = fl->file;
-        if (file_tell(fl->file) + size > file_length(fl->file))
-        {
-          lock_release(&filesys_lock);
-          exit(SYSCALL_ERROR);
-        }
-        memcpy(buffer, fl->uaddr, size);
-        lock_release(&filesys_lock);
-        return size;
-        //TODO read from mapped memory
-      }
+      int bytes_read = file_read(fl->file, buffer, size);
+      lock_release(&filesys_lock);
+      return bytes_read;
     }
   }
   else if (fd == STDIN_FILENO)
@@ -615,7 +601,6 @@ int read(int fd, void *buffer, unsigned size)
  */
 int write(int fd, const void *buffer, unsigned size)
 {
-
   if (buffer == NULL || buffer > PHYS_BASE)
   {
     exit(SYSCALL_ERROR);
@@ -631,8 +616,8 @@ int write(int fd, const void *buffer, unsigned size)
   struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
+
     int result = file_write(fl->file, buffer, size);
-    fl->is_dirty = true;
     lock_release(&filesys_lock);
     return result;
   }
@@ -694,86 +679,121 @@ void close(int fd)
   }
 }
 
-
+/**
+ * Maps the file open as fd into the process's virtual address space.
+ * The entire file is mapped into consecutive vitual pages starting at
+ * addr. The pages in mmap regions are lazily loaded.
+ * The mmaped file itself is used as backing store. That is evicting a
+ * page mapped by mmap writes it back to the file it was mapped from.
+ *
+ * If successful, this function returns a "mapping ID" that uniquely
+ * identifies the mapping within the process. On failure, it returns
+ * -1, which otherwise should not be a valid mapping id, and the
+ * processing's mappings must be unchanged.
+ *
+ * A call to mmap may fail if the file open as fd has a length of zero
+ * bytes. It must fail if addr is not page-aligned, or if the
+ * range of pages mapped overlaps any existing set of mapped pages,
+ * including the stack or pages mapped at executable load time. It
+ * must fail if addr is 0. Fd 0 and 1 represent console input and output
+ * respectively, and should not be mapped.
+ */
 mapid_t mmap(int fd , void *addr)
 {
   if (fd < 2 || filesize(fd) == 0 || addr == NULL
-      || addr == 0 || addr > PHYS_BASE)
+      || addr == 0 || addr > PHYS_BASE || ((uint32_t) addr) % PGSIZE != 0)
   {
-    exit(SYSCALL_ERROR);
+    return SYSCALL_ERROR;
   }
 
   int file_size = filesize(fd);
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
 
+  /* Checks if the range of pages mapped overlaps any existing set of mapped pages. */
   for (int i = 0; i < number_of_pages; i++)
   {
     void *phys_addr =
                 pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-    if (phys_addr != NULL &&
+    if (phys_addr != NULL ||
         spage_get_entry(&thread_current()->spage_table, phys_addr) != NULL)
     {
-      exit(SYSCALL_ERROR);
+      return SYSCALL_ERROR;
     }
   }
+  lock_acquire(&filesys_lock);
+  struct file_fd* fl = get_file_elem_from_fd(fd);
 
-  struct file* file = get_file_elem_from_fd(fd)->file;
-
-  void* kpage = palloc_get_multiple(PAL_USER, number_of_pages);
-
-  if (kpage == NULL)
+  if (fl == NULL)
   {
-    palloc_free_multiple(kpage, number_of_pages);
-    exit(SYSCALL_ERROR);
+    lock_release(&filesys_lock);
+    return SYSCALL_ERROR;
   }
 
-  if (file_read (file, kpage, file_size) != file_size)
-  {
-    palloc_free_multiple(kpage, number_of_pages);
-    exit(SYSCALL_ERROR);
-  }
-
-  memset(kpage + file_size, 0, PGSIZE - (file_size % PGSIZE));
+  size_t page_read_bytes = file_size >= PGSIZE ? PGSIZE : file_size;
+  off_t ofs = 0;
+  // memset(kpage + file_size, 0, PGSIZE - (file_size % PGSIZE));
   for (int i = 0; i < number_of_pages; i++)
   {
     spage_set_entry(&thread_current()->spage_table, addr + PGSIZE * i, 
-                    kpage + PGSIZE * i, false, true);
-  }  
+                    fl->file_name, ofs, page_read_bytes, true);
+    // Advance
+    ofs += PGSIZE;
+    page_read_bytes = file_size - ofs > PGSIZE ? PGSIZE : file_size - ofs;
+  }
 
-  struct file_fd *fl = get_file_elem_from_fd(fd);
+  struct file_mmap *new_mmap = malloc(sizeof(struct file_mmap));
 
-  fl->uaddr = addr;
-  return fd;
+  if (new_mmap != NULL)
+  {
+    new_mmap->map_id = fd;
+    strlcpy(new_mmap->file_name, fl->file_name, MAX_FILENAME_LEN);
+    new_mmap->file_size = file_size;
+    new_mmap->uaddr = addr;
+    list_push_back(&file_mappings, &new_mmap->elem);
+    lock_release(&filesys_lock);
+    return fd;
+  }
+  lock_release(&filesys_lock);
+  return SYSCALL_ERROR;
 }
 
+/**
+ * Unmaps the mapping designated by mapping, which must be
+ * a mapping ID returned by a previous call to mmap by the
+ * same process that has not yet been unmmaped.
+ *
+ * All mappings are implicitly unmapped when a process exits,
+ * whether via exit or by any other means. When a mapping
+ * is unmapped, whether implicitly or explicitly, all pages
+ * written to by the process are written are written back to
+ * the file, and pages not written must not be. The pages
+ * are then removed from the process's list of virtual pages.
+ *
+ * Closing or removing a file does not unmap any of its mappings.
+ * Once created, a mapping is valid until munmap is called or the
+ * process exits.
+ */
 void munmap (mapid_t mapping)
 {
   int fd = mapping;
 
-  struct file_fd* fl = get_file_elem_from_fd(fd);
+  struct file_mmap *file_mmap = get_file_mmap(mapping);
   
-  if (fl == NULL)
+  if (file_mmap == NULL)
   {
     exit(SYSCALL_ERROR);
   }
 
-  int file_size = file_length(fl->file);
+  int file_size = file_mmap->file_size;
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
-  if (fl->is_dirty)
+  if (pagedir_is_dirty(thread_current()->pagedir, file_mmap->uaddr))
   {
-    void *kpage = pagedir_get_page(thread_current()->pagedir, fl->uaddr);
+    void *kpage = pagedir_get_page(thread_current()->pagedir, file_mmap->uaddr);
     if (!kpage) exit(SYSCALL_ERROR);
-    
-    if (!file_write(fl->file, kpage, file_size))
-    {
-      exit(SYSCALL_ERROR);
-    }
   }
 
-  fl->uaddr = NULL;
-  fl->is_dirty = false;
   for (int i = 0; i < number_of_pages; i++)
   {
-    spage_remove_entry(&thread_current()->spage_table, fl->uaddr + i * PGSIZE);
+    spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
   }
 }

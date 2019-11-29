@@ -7,6 +7,9 @@
 #include "threads/pte.h"
 #include "threads/malloc.h"
 #include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
+#include <string.h>
 
 static struct list frame_table;
 static struct lock frame_table_lock;
@@ -51,7 +54,7 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
 void * frame_add_entry(struct spage_table_entry *spte)
 {
   uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  printf("Adding frame for %p\n", spte->uaddr);
+
   if (kpage != NULL)
   {
     struct frame_table_entry *new_entry =
@@ -60,16 +63,17 @@ void * frame_add_entry(struct spage_table_entry *spte)
     {
       size_t page_read_bytes = 0;
       size_t page_zero_bytes = PGSIZE;
-      if (spte != NULL && spte->file != NULL)
+      bool writable = true;
+      // If the new page allocated is used for stack growth
+      if (spte != NULL && !strlen(spte->file_name) == 0)
       {
         /* Load this page. */
-        // struct file *file_to_load = file_open(file_get_inode(spte->file));
-        struct file *file_to_load = filesys_open(thread_current()->executable_filename);
-        size_t file_len = file_length(file_to_load);
-        page_read_bytes = spte->ofs + PGSIZE > file_len ? 
-                                file_len - spte->ofs : PGSIZE;
+        // printf("File name : %s\n", spte->file_name);
+        struct file *file_to_load = filesys_open(spte->file_name);
+        // struct file *file_to_load = file_reopen(spte->file);
+        page_read_bytes = spte->page_read_byte;
         page_zero_bytes = PGSIZE - page_read_bytes;
-        // printf("Bytes read: %d\n", file_read (file_to_load, kpage, page_read_bytes));
+        writable = spte->writable;
         if (file_read_at(file_to_load, kpage, page_read_bytes, spte->ofs) != (int) page_read_bytes)
         {
           file_close(file_to_load);
@@ -80,7 +84,7 @@ void * frame_add_entry(struct spage_table_entry *spte)
       }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      if (!install_page(spte->uaddr, kpage, spte->writable)) 
+      if (!install_page(spte->uaddr, kpage, writable)) 
       {
         return NULL;
       }
@@ -91,7 +95,7 @@ void * frame_add_entry(struct spage_table_entry *spte)
       lock_acquire(&frame_table_lock);
       list_push_back(&frame_table, &new_entry->elem);
       lock_release(&frame_table_lock);
-      printf("Frame table entry added %p\n", kpage);
+      // printf("Frame table entry added %p\n", kpage);
       return vtop(new_entry->kpage_addr);
     }
   }

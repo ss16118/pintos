@@ -1,5 +1,5 @@
 #include <debug.h>
-
+#include <string.h>
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
@@ -73,7 +73,8 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
  * NULL if the creation fails.
  */
 struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
-                                          struct file* file, off_t ofs, bool writable)
+                                          const char *file, off_t ofs, size_t page_read_bytes, 
+                                          bool writable)
 {
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
@@ -93,7 +94,11 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->uaddr = uaddr;
     new_entry->is_installed = false;
     new_entry->is_swapped = false;
-    new_entry->file = file;
+    if (file != NULL)
+      strlcpy(new_entry->file_name, file, MAX_FILENAME_LEN);
+    else
+      new_entry->file_name[0] = '\0';
+    new_entry->page_read_byte = page_read_bytes;
     new_entry->ofs = ofs;
     new_entry->writable = writable;
     lock_acquire(&spage_lock);
@@ -101,7 +106,7 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
       lock_release(&spage_lock);
-      printf("Spte set for %p\n", uaddr);
+      // printf("Spte set for %p\n", uaddr);
       return new_entry;
     }
   }

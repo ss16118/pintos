@@ -106,6 +106,7 @@ kill (struct intr_frame *f)
          Kernel code shouldn't throw exceptions.  (Page faults
          may cause kernel exceptions--but they shouldn't arrive
          here.)  Panic the kernel to make the point.  */
+
       intr_dump_frame (f);
       PANIC ("Kernel bug - unexpected interrupt in kernel"); 
 
@@ -153,24 +154,22 @@ page_fault (struct intr_frame *f)
 
   /* Count page faults. */
   page_fault_cnt++;
-
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
   /* A virtual address that is actually invalid should satisfy one or more of the
-     following conditions:
-     1. A NULL pointer
-     2. A kernel address
-     3. An address below the user stack (BASE_LINE)
-     4. An address that does not appear to be a stack access. If the virtual
-        address requested does not appear to be the next contiguous memory page
-        address of the stack.
-
-     If the virtual address is valid, allocate a new page in the current thread's
-     page directory, and continue running the current thread.
-   */
-  //printf("Fault addr: %p\n", fault_addr);
+    following conditions:
+    1. A NULL pointer
+    2. A kernel address
+    3. An address below the user stack (BASE_LINE)
+    4. An address that does not appear to be a stack access. If the virtual
+       address requested does not appear to be the next contiguous memory page
+       address of the stack.
+    If the virtual address is valid, allocate a new page in the current thread's
+    page directory, and continue running the current thread.
+  */
+  // printf("Fault addr: %p\n", fault_addr);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
     void *user_page = pg_round_down(fault_addr);
@@ -179,14 +178,12 @@ page_fault (struct intr_frame *f)
     struct spage_table_entry *spage_entry =
         spage_get_entry(&thread_current()->spage_table, user_page);
     bool writable = true;
-    void *new_kpage;
     if (spage_entry != NULL)
     {
       // TODO: check if the page is swapped out
-      if (!spage_entry->isInstalled)
+      if (!spage_entry->is_installed)
       {
-        new_kpage = spage_entry->kaddr;
-        spage_entry->isInstalled = true;
+        spage_entry->is_installed = true;
         writable = spage_entry->writable;
       }
     }
@@ -195,43 +192,22 @@ page_fault (struct intr_frame *f)
       // Stack Growth
       // Checks if fault_addr is in the next contiguous memory page and
       // is less than address for the maximum stack size
-      
+      spage_entry = spage_set_entry(&thread_current()->spage_table, user_page,
+                                    NULL, 0, 0, writable);
       void *stk_ptr = f->esp > PHYS_BASE || f->esp < BASE_LINE ? thread_current()->saved_stk_ptr : f->esp;
       bool fault_addr_in_next_page = 
           (uint32_t) (((char *) stk_ptr) - ((char *) fault_addr)) <= MAX_OFFSET;
-      bool below_max_stk_size = (int32_t) (((char *) PHYS_BASE) - ((char *) stk_ptr)) <= MAX_STACK_SIZE;
-      // printf("Actual stack pointer: %p\n", f->esp);
-      // printf("Stack pointer: %p, fault addr %p\n", stk_ptr, user_page);
-      // printf("Stk ptr < fault addr: %d\n", stk_ptr < fault_addr);
-      // printf("Fault addr in next page: %d\n", fault_addr_in_next_page);
-      // printf("below_max_stk_size: %d\n", below_max_stk_size);
-      if ((stk_ptr < fault_addr || fault_addr_in_next_page) && below_max_stk_size)
+      bool below_max_stk_size = (uint32_t) (((char *) PHYS_BASE) - ((char *) stk_ptr)) <= MAX_STACK_SIZE;
+      // printf("Fault addr: %p\nstack pointer %p\n", fault_addr, stk_ptr);
+      // printf("Fault addr in next page : %d\n", fault_addr_in_next_page);
+      // printf("Below stk max size : %d\n", below_max_stk_size);
+      if (!((stk_ptr < fault_addr || fault_addr_in_next_page) && below_max_stk_size))
       {
-        new_kpage = (void *) palloc_get_page(PAL_USER | PAL_ZERO);
-        if (!new_kpage) goto fault;
-      }
-      else
-      {
-        //printf("Adding page to stack failed: %p\n", user_page);
         goto fault;
       }
     }
-
-    if (install_page(user_page, new_kpage, writable))
-    {
-      if (!frame_add_entry(new_kpage)) 
-      {
-        //printf("Frame add entry failed\n");
-        goto fault;
-      }
-      return;
-    }
-    else
-    {
-      // TODO: Utilize eviction policy to make sure the page is loaded
-      // printf("The page %p already exists\n", user_page);
-      goto fault;
-    }
+    if (frame_add_entry(spage_entry) != NULL) return;
+    goto fault;
   }
   else
   {
@@ -239,12 +215,4 @@ page_fault (struct intr_frame *f)
     exit(SYSCALL_ERROR);
   }
 }
-
-// back up
-      // if (spage_entry->is_file)
-      // {
-      //     struct file_fd * file_fd = get_file_elem_from_address(user_page);
-      //     int size = filesize(file_fd->fd);
-      //     load_segment(file_fd->file, spage_entry->uaddr, size, PGSIZE - (size % PGSIZE), writable);
-      // }
 

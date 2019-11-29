@@ -150,9 +150,9 @@ process_exit (void)
        directory before destroying the process's page
        directory, or our active page directory will be one
        that's been freed (and cleared). */
+    spage_table_destroy(&thread_current()->spage_table);
     cur->pagedir = NULL;
     pagedir_activate (NULL);
-    spage_table_destroy(&thread_current()->spage_table);
     frame_free_entries_from_pd(pd);
     pagedir_destroy (pd);
   }
@@ -240,8 +240,8 @@ struct Elf32_Phdr
 
 static bool setup_stack (void **esp, char *file_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
+static bool load_segment (const char* file_name, struct file *file, off_t ofs,
+                          uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
@@ -339,7 +339,7 @@ load (const char *parameters, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
+              if (!load_segment (file_name, file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
             }
@@ -424,7 +424,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage,
+load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
@@ -432,6 +432,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   file_seek (file, ofs);
+
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -439,35 +440,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL) 
-      {
-
-        // TODO: implement eviction
-
-        return false;
-      }
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      spage_set_entry(&thread_current()->spage_table, (void *) upage,
-                      (void *) kpage, writable, false);
+      // printf("Page read bytes: %d\n Page zero bytes %d\n", page_read_bytes, page_zero_bytes);
+      spage_set_entry(&thread_current()->spage_table, (void *) upage, file_name, ofs, page_read_bytes, writable);
       // printf("Created spage table entry for %p\n", kpage);
 
       /* Advance. */
+      ofs += PGSIZE;
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
-  // printf("completed load_seg\n\n");
   return true;
 }
 
@@ -479,16 +461,15 @@ setup_stack (void **esp, char *parameters)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      void *frame_addr = frame_add_entry(kpage);
-      if (success && frame_addr)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  struct spage_table_entry *spte =
+      spage_set_entry(&thread_current()->spage_table, upage, NULL, 0, PGSIZE, true);
+  void *frame_addr = frame_add_entry(spte);
+  if (frame_addr != NULL)
+  {
+    success = true;
+    *esp = PHYS_BASE;
+  }
 
   /* Tokenize the arguments and push them onto the interrupt frame according to
      the start-up details */

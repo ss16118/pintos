@@ -2,6 +2,7 @@
 #define VM_PAGE_H
 #include "filesys/file.h"
 #include "lib/kernel/hash.h"
+#include "threads/thread.h"
 
 /* PAGES
 
@@ -40,8 +41,9 @@ struct spage_table_entry
   bool is_installed;
   bool is_swapped;
 
-  struct file* file;
+  char file_name[MAX_FILENAME_LEN];
   off_t ofs;
+  size_t page_read_byte;
   struct hash_elem hash_elem;
 };
 
@@ -49,7 +51,7 @@ void spage_init(struct hash *);
 
 struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
-struct spage_table_entry *spage_set_entry(struct hash *, void *, struct file *, off_t, bool);
+struct spage_table_entry *spage_set_entry(struct hash *, void *, const char *, off_t, size_t, bool);
 
 bool spage_remove_entry(struct hash *, void *);
 

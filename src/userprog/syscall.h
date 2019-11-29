@@ -1,8 +1,9 @@
-#include <user/syscall.h>
-#include <list.h>
-
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
+
+#include <user/syscall.h>
+#include <list.h>
+#include "threads/thread.h"
 
 #define SYSCALL_ERROR -1
 #define CHILD_RUNNING -2
@@ -21,9 +22,8 @@ bool remove(const char *file);
 struct file_fd
 {
     int fd;                     /* unique file descriptor */
-    void * uaddr;               /* mmaped location */
-    bool is_dirty;              /* file has been edited in memory */
     struct file *file;          /* the opened file */
+    char file_name[MAX_FILENAME_LEN];
     struct list_elem elem;
 };
 
@@ -35,8 +35,16 @@ struct child_bookmark
     struct list_elem elem;
 };
 
-static struct file_fd *get_file_elem_from_address(void * addr);
-static struct file_fd *get_file_elem_from_fd(int fd);
+
+/* Struct  binds the starting virtural address of a file with a unique mapping id*/
+struct file_mmap
+{
+  mapid_t map_id;
+  char file_name[MAX_FILENAME_LEN];
+  size_t file_size;
+  void *uaddr;
+  struct list_elem elem;
+};
 
 int open(const char *file);
 int filesize(int fd);

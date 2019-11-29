@@ -56,9 +56,8 @@ void swap_slot_to_frame(swap_index index, void *frame)
 {
   if (index < swap_slot_count)
   {
-    return read_from_block(swap_index_to_sector(index), frame);
+    read_from_block(swap_index_to_sector(index), frame);
   }
-  return NULL;
 }
 
 /**

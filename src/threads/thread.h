@@ -7,7 +7,7 @@
 #include <hash.h>
 
 #include "synch.h"
-#define MAX_FILENAME_LEN 14
+#define MAX_FILENAME_LEN 15
 
 /* States in a thread's life cycle. */
 enum thread_status
