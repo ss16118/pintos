@@ -563,6 +563,11 @@ int read(int fd, void *buffer, unsigned size)
     if (fl != NULL)
     {
       int bytes_read = file_read(fl->file, buffer, size);
+      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, buffer);
+      if (spte != NULL)
+      {
+        pagedir_set_accessed(thread_current()->pagedir, spte->uaddr, true);
+      }
       lock_release(&filesys_lock);
       return bytes_read;
     }
@@ -715,7 +720,7 @@ mapid_t mmap(int fd , void *addr)
     void *phys_addr =
                 pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
     if (phys_addr != NULL ||
-        spage_get_entry(&thread_current()->spage_table, phys_addr) != NULL)
+        spage_get_entry(&thread_current()->spage_table, addr + i * PGSIZE) != NULL)
     {
       return SYSCALL_ERROR;
     }
@@ -746,7 +751,7 @@ mapid_t mmap(int fd , void *addr)
   if (new_mmap != NULL)
   {
     new_mmap->map_id = fd;
-    strlcpy(new_mmap->file_name, fl->file_name, MAX_FILENAME_LEN);
+    // strlcpy(new_mmap->file_name, fl->file_name, MAX_FILENAME_LEN);
     new_mmap->file_size = file_size;
     new_mmap->uaddr = addr;
     list_push_back(&file_mappings, &new_mmap->elem);
@@ -786,14 +791,20 @@ void munmap (mapid_t mapping)
 
   int file_size = file_mmap->file_size;
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
-  if (pagedir_is_dirty(thread_current()->pagedir, file_mmap->uaddr))
-  {
-    void *kpage = pagedir_get_page(thread_current()->pagedir, file_mmap->uaddr);
-    if (!kpage) exit(SYSCALL_ERROR);
-  }
 
   for (int i = 0; i < number_of_pages; i++)
   {
+    void *curr_uaddr = file_mmap->uaddr + i * PGSIZE;
+    if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
+    {
+      void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
+      if (kpage == NULL) exit(SYSCALL_ERROR);
+      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
+      if (spte == NULL) exit(SYSCALL_ERROR);
+      struct file *file_to_write = filesys_open(spte->file_name);
+      file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
+      if (!kpage) exit(SYSCALL_ERROR);
+    }
     spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
   }
 }
