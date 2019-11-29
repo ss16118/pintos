@@ -23,6 +23,7 @@
 #include "filesys/inode.h"
 
 #include "vm/page.h"
+#include "vm/frame.h"
 
 #define WORD 4
 
@@ -30,6 +31,8 @@ static void syscall_handler (struct intr_frame *);
 static bool is_valid_pointer(const void *uaddr);
 static struct file_mmap *get_file_mmap(mapid_t);
 static struct file_fd *get_file_elem_from_fd(int fd);
+static void remove_file_mmap_on_exit(void);
+static void munmap_write_back_to_file(struct file_mmap *);
 static int file_desc_count = 2;
 static struct lock filesys_lock;
 static struct list file_mappings;
@@ -235,6 +238,9 @@ void exit(int status)
     intr_set_level(old_level);
   }
 
+  /* Removes all the struct file_mmap owned by the current thread */
+  remove_file_mmap_on_exit();
+
   /* Checks if parent is waiting on thread */
   enum intr_level old_level = intr_disable();
   if (thread_current()->parent != NULL)
@@ -413,6 +419,28 @@ bool remove(const char *file)
   lock_acquire(&filesys_lock);
   if (strcmp(file, "") != 0)
   {
+    /* Checks if the file is mapped. If it is, 
+    read in the content of the file. */
+    struct file_mmap *fm = NULL;
+    for (struct list_elem *e = list_begin(&file_mappings);
+        e != list_end(&file_mappings); e = list_next(e))
+    {
+      struct file_mmap *temp = list_entry(e, struct file_mmap, elem);
+      if (temp != NULL && strcmp(temp->file_name, file) == 0)
+      {
+        fm = temp;
+      }
+    }
+    if (fm != NULL)
+    {
+      int number_of_pages = (fm->file_size - 1) / PGSIZE + 1;
+      for (int i = 0; i < number_of_pages; i++)
+      {
+        frame_add_entry(spage_get_entry(&thread_current()->spage_table, 
+                                        fm->uaddr + i * PGSIZE));
+      }
+    }
+    
     int result = filesys_remove(file);
     lock_release(&filesys_lock);
     return result;
@@ -495,29 +523,6 @@ static struct file_fd *get_file_elem_from_fd(int fd)
         intr_set_level(old_level);
         return fl;
       }
-    }
-  }
-  intr_set_level(old_level);
-  return NULL;
-}
-
-/**
- * Obtains the struct file_mmap of the given mapping id.
- * If the list does not contain the element with the id,
- * return NULL.
- */
-static struct file_mmap *get_file_mmap(mapid_t mapping)
-{
-  enum intr_level old_level = intr_disable();
-
-  for (struct list_elem *e = list_begin(&file_mappings);
-       e != list_end(&file_mappings); e = list_next(e))
-  {
-    struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
-    if (fm->map_id == mapping)
-    {
-      intr_set_level(old_level);
-      return fm;
     }
   }
   intr_set_level(old_level);
@@ -684,6 +689,60 @@ void close(int fd)
   }
 }
 
+/************************************************************************
+ *                            MMAP and MUNMAP                           *
+ ************************************************************************/
+
+/**
+ * Obtains the struct file_mmap of the given mapping id.
+ * If the list does not contain the element with the id,
+ * return NULL.
+ */
+static struct file_mmap *get_file_mmap(mapid_t mapping)
+{
+  enum intr_level old_level = intr_disable();
+
+  for (struct list_elem *e = list_begin(&file_mappings);
+       e != list_end(&file_mappings); e = list_next(e))
+  {
+    struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
+    if (fm->map_id == mapping)
+    {
+      intr_set_level(old_level);
+      return fm;
+    }
+  }
+  intr_set_level(old_level);
+  return NULL;
+}
+
+/**
+ * Unmaps all the mapped files of the curren thread, and frees all
+ * the occupied resources.
+ */ 
+static void remove_file_mmap_on_exit(void)
+{
+  if (!list_empty(&file_mappings))
+  {
+    lock_acquire(&filesys_lock);
+    struct list_elem *e = list_begin(&file_mappings);
+    while (e != list_end(&file_mappings))
+    {
+      struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
+      e = list_next(e);
+      if (fm->owner == thread_current())
+      {
+        munmap_write_back_to_file(fm);
+        list_remove(&fm->elem);
+        free(fm);
+      }
+    }
+    lock_release(&filesys_lock);
+  } 
+}
+
+
+
 /**
  * Maps the file open as fd into the process's virtual address space.
  * The entire file is mapped into consecutive vitual pages starting at
@@ -736,7 +795,6 @@ mapid_t mmap(int fd , void *addr)
 
   size_t page_read_bytes = file_size >= PGSIZE ? PGSIZE : file_size;
   off_t ofs = 0;
-  // memset(kpage + file_size, 0, PGSIZE - (file_size % PGSIZE));
   for (int i = 0; i < number_of_pages; i++)
   {
     spage_set_entry(&thread_current()->spage_table, addr + PGSIZE * i, 
@@ -746,12 +804,14 @@ mapid_t mmap(int fd , void *addr)
     page_read_bytes = file_size - ofs > PGSIZE ? PGSIZE : file_size - ofs;
   }
 
+  /* Creates the struct to save the meta data */
   struct file_mmap *new_mmap = malloc(sizeof(struct file_mmap));
 
   if (new_mmap != NULL)
   {
     new_mmap->map_id = fd;
-    // strlcpy(new_mmap->file_name, fl->file_name, MAX_FILENAME_LEN);
+    strlcpy(new_mmap->file_name, fl->file_name, MAX_FILENAME_LEN);
+    new_mmap->owner = thread_current();
     new_mmap->file_size = file_size;
     new_mmap->uaddr = addr;
     list_push_back(&file_mappings, &new_mmap->elem);
@@ -761,6 +821,38 @@ mapid_t mmap(int fd , void *addr)
   lock_release(&filesys_lock);
   return SYSCALL_ERROR;
 }
+
+
+/**
+ * Goes through all the mapped pages and checks they have been modified
+ * writes the modified pages back to the file. Removes the mapped pages
+ * in the supplemental page table.
+ */
+static void munmap_write_back_to_file(struct file_mmap *file_mmap)
+{
+  int file_size = file_mmap->file_size;
+  int number_of_pages = (file_size - 1) / PGSIZE + 1;
+
+  for (int i = 0; i < number_of_pages; i++)
+  {
+    void *curr_uaddr = file_mmap->uaddr + i * PGSIZE;
+    if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
+    {
+      void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
+      if (kpage == NULL) exit(SYSCALL_ERROR);
+
+      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
+      if (spte == NULL) exit(SYSCALL_ERROR);
+
+      struct file *file_to_write = filesys_open(spte->file_name);
+      file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
+      if (!kpage) exit(SYSCALL_ERROR);
+    }
+    spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
+  }
+}
+
+
 
 /**
  * Unmaps the mapping designated by mapping, which must be
@@ -789,22 +881,8 @@ void munmap (mapid_t mapping)
     exit(SYSCALL_ERROR);
   }
 
-  int file_size = file_mmap->file_size;
-  int number_of_pages = (file_size - 1) / PGSIZE + 1;
+  munmap_write_back_to_file(file_mmap);
 
-  for (int i = 0; i < number_of_pages; i++)
-  {
-    void *curr_uaddr = file_mmap->uaddr + i * PGSIZE;
-    if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
-    {
-      void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
-      if (kpage == NULL) exit(SYSCALL_ERROR);
-      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
-      if (spte == NULL) exit(SYSCALL_ERROR);
-      struct file *file_to_write = filesys_open(spte->file_name);
-      file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
-      if (!kpage) exit(SYSCALL_ERROR);
-    }
-    spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
-  }
+  list_remove(&file_mmap->elem);
+  free(file_mmap);
 }

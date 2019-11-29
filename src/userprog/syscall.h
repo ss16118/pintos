@@ -40,7 +40,8 @@ struct child_bookmark
 struct file_mmap
 {
   mapid_t map_id;
-  // char file_name[MAX_FILENAME_LEN];
+  char file_name[MAX_FILENAME_LEN];
+  struct thread *owner;
   size_t file_size;
   void *uaddr;
   struct list_elem elem;

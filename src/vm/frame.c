@@ -46,8 +46,6 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
 
 /**
  * Adds a new entry to the frame table.
- * @param kpage: the address to the kernel page allocated
- * by palloc_get_page().
  * @return: the address of the physical frame if the allocation is
  * successful, otherwise, return NULL.
  */
@@ -86,6 +84,7 @@ void * frame_add_entry(struct spage_table_entry *spte)
 
       if (!install_page(spte->uaddr, kpage, writable)) 
       {
+        palloc_free_page(kpage);
         return NULL;
       }
 
@@ -103,6 +102,7 @@ void * frame_add_entry(struct spage_table_entry *spte)
   {
     // TODO: Implement eviction
   }
+  palloc_free_page(kpage);
   return NULL;
 }
 
