@@ -36,12 +36,13 @@
 
 struct frame_table_entry
 {
-   struct thread *owner;
-   void *kpage_addr;
-   void *uaddr;                     /* We store this so we can find the upage
-                                       via a given kpage and unmap it */
-   uint64_t access_time;
-   struct list_elem elem;
+  struct thread *owner;
+  void *kpage_addr;
+  void *uaddr;                     /* We store this so we can find the upage
+                                      via a given kpage and unmap it */
+  bool pinned;
+  uint64_t access_time;
+  struct list_elem elem;
 };
 
 void frame_init(void);

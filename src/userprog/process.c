@@ -464,9 +464,10 @@ setup_stack (void **esp, char *parameters)
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   struct spage_table_entry *spte =
       spage_set_entry(&thread_current()->spage_table, upage, NULL, 0, PGSIZE, true);
-  void *frame_addr = frame_add_entry(spte);
-  if (frame_addr != NULL)
+  struct frame_table_entry *frame_entry = frame_add_entry(spte);
+  if (frame_entry != NULL)
   {
+    frame_entry->pinned = true;
     success = true;
     *esp = PHYS_BASE;
   }

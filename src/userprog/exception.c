@@ -169,7 +169,7 @@ page_fault (struct intr_frame *f)
     If the virtual address is valid, allocate a new page in the current thread's
     page directory, and continue running the current thread.
   */
-  printf("Fault addr: %p\n", fault_addr);
+  // printf("Fault addr: %p\n", fault_addr);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
     void *user_page = pg_round_down(fault_addr);
@@ -177,6 +177,7 @@ page_fault (struct intr_frame *f)
     // if it is, install the page
     struct spage_table_entry *spage_entry =
         spage_get_entry(&thread_current()->spage_table, user_page);
+    bool pinned = ((uint32_t) fault_addr) % PGSIZE != 0;
     bool writable = true;
     if (spage_entry != NULL)
     {
@@ -206,8 +207,14 @@ page_fault (struct intr_frame *f)
         goto fault;
       }
     }
-    if (frame_add_entry(spage_entry) != NULL) return;
-    goto fault;
+    struct frame_table_entry *frame_entry = frame_add_entry(spage_entry);
+    if (frame_entry != NULL)
+    {
+      frame_entry->pinned = pinned;
+      return;
+    }
+    else
+      goto fault;
   }
   else
   {

@@ -100,5 +100,5 @@ void write_to_block(block_sector_t sector, void *frame)
 static
 block_sector_t swap_index_to_sector(swap_index index)
 {
-  return index / swap_slot_count * block_size(swap_blocks);
+  return SECTORS_PER_PAGE * index;
 }

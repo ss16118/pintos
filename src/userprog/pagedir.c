@@ -62,6 +62,7 @@ pagedir_destroy (uint32_t *pd)
 static uint32_t *
 lookup_page (uint32_t *pd, const void *vaddr, bool create)
 {
+  // printf("Looking for %p in pagedir\n", vaddr);
   uint32_t *pt, *pde;
 
   ASSERT (pd != NULL);
