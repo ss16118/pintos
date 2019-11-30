@@ -1,17 +1,18 @@
+#include "page.h"
+
 #include <debug.h>
 #include <string.h>
+
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "userprog/syscall.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "filesys/file.h"
 #include "filesys/off_t.h"
-#include "page.h"
 
-
-static struct lock spage_lock;
+#include "swap.h"
 
 static void spage_table_entry_destroy(struct hash_elem *e, void *aux);
 static unsigned spte_hash_func(const struct hash_elem *e, void *aux);
@@ -26,6 +27,7 @@ void spage_init(struct hash *spage_table)
   lock_init(&spage_lock);
   hash_init(spage_table, &spte_hash_func, &spte_less_func, NULL);
 }
+
 
 /* Retrieves a supplementary page table entry for the given UADDR, or NULL if
  * the entry does not exist within the current thread's supplementary page
@@ -42,9 +44,8 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
    * Done this way to maintain abstraction and hiding of spage table hash table
    * implementation.
    */
-  struct spage_table_entry temp_entry; // = malloc(sizeof(struct spage_table_entry *));
-  // if (temp_entry != NULL)
-  // {
+  struct spage_table_entry temp_entry;
+  
   temp_entry.uaddr = uaddr;
   // temp_entry.hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
   struct hash_elem *spte_elem = hash_find(spage_table,
@@ -198,6 +199,10 @@ static void spage_table_entry_destroy(struct hash_elem *e, void *aux UNUSED)
 
   if (entry != NULL)
   {
+    if (!entry->is_installed && entry->is_swapped)
+    {
+      swap_clear_slot(entry->swap_slot);
+    }
     free(entry);
   }
 }

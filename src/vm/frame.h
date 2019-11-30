@@ -3,6 +3,7 @@
 
 #include "list.h"
 #include "page.h"
+// #include "inttypes.h"
 /* FRAMES
  
    A frame, sometimes called a physical frame or a page frame, is a continuous
@@ -35,15 +36,11 @@
 
 struct frame_table_entry
 {
-   /* Some sort of frame table element, for insertion into frame table. Used
-    * primarily in eviction.
-    * 
-    * thread*     - Pointer to owner process
-    * void*       - Frame addr
-    */
-
    struct thread *owner;
    void *kpage_addr;
+   void *uaddr;                     /* We store this so we can find the upage
+                                       via a given kpage and unmap it */
+   uint64_t access_time;
    struct list_elem elem;
 };
 

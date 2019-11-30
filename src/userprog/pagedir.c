@@ -1,10 +1,16 @@
 #include "userprog/pagedir.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#ifdef VM
+#include "devices/timer.h"
+#include "vm/frame.h"
+#endif
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -82,7 +88,18 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
 
   /* Return the page table entry. */
   pt = pde_get_pt (*pde);
-  return &pt[pt_no (vaddr)];
+  uint32_t *pte = &pt[pt_no (vaddr)];
+  if (*pte & PTE_P)
+  {
+    struct frame_table_entry *entry = frame_get_frame(pte_get_page(*pte));
+    if (entry != NULL)
+    {
+      entry->access_time = timer_ticks();
+
+    }
+  }
+  return pte;
+  // return &pt[pt_no (vaddr)];
 }
 
 /* Adds a mapping in page directory PD from user virtual page

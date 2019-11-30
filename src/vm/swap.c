@@ -10,7 +10,7 @@ static struct lock swap_lock;
 static size_t swap_slot_count;
 
 static void read_from_block(block_sector_t, void *);
-static void write_from_block(block_sector_t, void *);
+static void write_to_block(block_sector_t, void *);
 static block_sector_t swap_index_to_sector(swap_index);
 
 void swap_init()
@@ -32,6 +32,15 @@ swap_index swap_get_free_slots()
   return bitmap_scan_and_flip(swap_table, 0, 1, false);
 }
 
+swap_index swap_get_used_slots()
+{
+  return bitmap_scan_and_flip(swap_table, 0, 1, true);
+}
+
+void swap_clear_slot(swap_index slot)
+{
+  bitmap_reset(swap_table, slot);
+}
 /* Attempts to swap the given FRAME into memory, will select the swap slot from
    available slots in the swap table. If no slots are avilable, return NULL
    @param frame, the frame to swap into a slot
@@ -44,19 +53,21 @@ swap_index swap_frame_to_slot(void * frame)
   swap_index free_slot = swap_get_free_slots();
   if (free_slot != BITMAP_ERROR)
   {
-    write_from_block(swap_index_to_sector(free_slot), frame);
+    write_to_block(swap_index_to_sector(free_slot), frame);
     lock_release(&swap_lock);
     return free_slot;
   }
   lock_release(&swap_lock);
-  return NULL;
+  return SWAP_ERROR;
 }
 
 void swap_slot_to_frame(swap_index index, void *frame)
 {
   if (index < swap_slot_count)
   {
+    lock_acquire(&swap_lock);
     read_from_block(swap_index_to_sector(index), frame);
+    lock_release(&swap_lock);
   }
 }
 
@@ -78,7 +89,7 @@ void read_from_block(block_sector_t sector, void *frame)
  * from the given sector.
  */
 static
-void write_from_block(block_sector_t sector, void *frame)
+void write_to_block(block_sector_t sector, void *frame)
 {
   for (int i = 0; i < SECTORS_PER_PAGE; i++)
   {

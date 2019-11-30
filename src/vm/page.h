@@ -3,6 +3,7 @@
 #include "filesys/file.h"
 #include "lib/kernel/hash.h"
 #include "threads/thread.h"
+#include "swap.h"
 
 /* PAGES
 
@@ -33,6 +34,11 @@ Section A.6 [Virtual Addresses], page 68, for details.
 ********************************************************************************
 */
 
+/* Lock to facilitate synchronisation across spage table operations, non-static
+   as this is used during frame table evictions.
+ */
+struct lock spage_lock;
+
 struct spage_table_entry
 {
   void *uaddr;
@@ -44,6 +50,7 @@ struct spage_table_entry
   char file_name[MAX_FILENAME_LEN];
   off_t ofs;
   size_t page_read_byte;
+  swap_index swap_slot;
   struct hash_elem hash_elem;
 };
 

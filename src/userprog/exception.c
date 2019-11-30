@@ -169,7 +169,7 @@ page_fault (struct intr_frame *f)
     If the virtual address is valid, allocate a new page in the current thread's
     page directory, and continue running the current thread.
   */
-  // printf("Fault addr: %p\n", fault_addr);
+  printf("Fault addr: %p\n", fault_addr);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
     void *user_page = pg_round_down(fault_addr);
