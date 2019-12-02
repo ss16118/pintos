@@ -1,4 +1,4 @@
-#include "userprog/syscall.h"
+#include "syscall.h"
 #include "process.h"
 #include "pagedir.h"
 
@@ -700,7 +700,7 @@ void close(int fd)
  */
 static struct file_mmap *get_file_mmap(mapid_t mapping)
 {
-  enum intr_level old_level = intr_disable();
+  lock_acquire(&filesys_lock);
 
   for (struct list_elem *e = list_begin(&file_mappings);
        e != list_end(&file_mappings); e = list_next(e))
@@ -708,11 +708,11 @@ static struct file_mmap *get_file_mmap(mapid_t mapping)
     struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
     if (fm->map_id == mapping)
     {
-      intr_set_level(old_level);
+      lock_release(&filesys_lock);
       return fm;
     }
   }
-  intr_set_level(old_level);
+  lock_release(&filesys_lock);
   return NULL;
 }
 
@@ -741,7 +741,33 @@ static void remove_file_mmap_on_exit(void)
   } 
 }
 
+bool page_is_mmap(void *uaddr)
+{
+  lock_acquire(&filesys_lock);
 
+  for (struct list_elem *e = list_begin(&file_mappings);
+       e != list_end(&file_mappings); e = list_next(e))
+  {
+    struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
+    if (fm->uaddr == uaddr && fm->owner == thread_current())
+    {
+      lock_release(&filesys_lock);
+      return true;
+    }
+  }
+  lock_release(&filesys_lock);
+  return false;
+}
+
+void write_page_to_file(struct spage_table_entry *spte, void *kpage)
+{
+  if (spte != NULL && kpage != NULL && strlen(spte->file_name) > 0)
+  {
+    struct file *file_to_write = filesys_open(spte->file_name);
+    file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
+    file_close(file_to_write);
+  }
+}
 
 /**
  * Maps the file open as fd into the process's virtual address space.
@@ -844,9 +870,7 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
       struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
       if (spte == NULL) exit(SYSCALL_ERROR);
 
-      struct file *file_to_write = filesys_open(spte->file_name);
-      file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
-      if (!kpage) exit(SYSCALL_ERROR);
+      write_page_to_file(spte, kpage);
     }
     spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
   }

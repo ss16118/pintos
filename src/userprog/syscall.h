@@ -3,7 +3,9 @@
 
 #include <user/syscall.h>
 #include <list.h>
+
 #include "threads/thread.h"
+#include "vm/page.h"
 
 #define SYSCALL_ERROR -1
 #define CHILD_RUNNING -2
@@ -57,5 +59,7 @@ unsigned tell(int fd);
 void close(int fd);
 mapid_t mmap (int fd , void * addr);
 void munmap (mapid_t mapping);
+bool page_is_mmap(void *uaddr);
+void write_page_to_file(struct spage_table_entry *spte, void *kpage);
 
 #endif /* userprog/syscall.h */

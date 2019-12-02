@@ -1,5 +1,7 @@
 #include "frame.h"
 
+#include <string.h>
+
 #include "devices/timer.h"
 #include "threads/init.h"
 #include "threads/malloc.h"
@@ -10,16 +12,18 @@
 #include "threads/vaddr.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include "swap.h"
-
-#include <string.h>
 
 static struct list frame_table;
 static struct lock frame_table_lock;
 
-static void *evict_frame();
+static void *evict_frame(void);
 static void *reclaim_frame(struct spage_table_entry *);
+
+static int frame_table_index = 0;
 
 void frame_init(void)
 {
@@ -45,7 +49,6 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
         list_entry(e, struct frame_table_entry, elem);
     if (entry->kpage_addr == kpage_addr)
     {
-      entry->access_time = timer_ticks();
       return entry;
     }
   }
@@ -58,13 +61,13 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
  * @return: the address of the frame entry if the allocation is
  * successful, otherwise, return NULL.
  */
-void * frame_add_entry(struct spage_table_entry *spte)
+void *frame_add_entry(struct spage_table_entry *spte)
 {
   if (spte != NULL)
   {
     // printf("frame adding entry for %p\n", spte->uaddr);
     struct frame_table_entry *new_entry =
-                                        malloc(sizeof(struct frame_table_entry));
+                                       malloc(sizeof(struct frame_table_entry));
 
     if (new_entry != NULL)
     {
@@ -124,12 +127,11 @@ void * frame_add_entry(struct spage_table_entry *spte)
       new_entry->kpage_addr = kpage;
       new_entry->uaddr = spte->uaddr;
       new_entry->owner = thread_current();
-      new_entry->access_time = timer_ticks();
+      new_entry->second_chance = false;
       lock_acquire(&frame_table_lock);
       list_push_back(&frame_table, &new_entry->elem);
       lock_release(&frame_table_lock);
       // printf("Frame table entry added %p\n", kpage);
-      // return vtop(new_entry->kpage_addr);
       return new_entry;
     }
   }
@@ -215,6 +217,7 @@ struct frame_table_entry *frame_get_frame(void *kpage_addr)
  */
 static void *evict_frame()
 {
+  // printf("frame_table_index: %d\n", frame_table_index);
   // Frame table is current full
   lock_acquire(&frame_table_lock);
   lock_acquire(&spage_lock);
@@ -222,56 +225,68 @@ static void *evict_frame()
   {
     PANIC("SOMETHING IS VERY WRONG");
   }
+  // printf("frames: %d\n", list_size(&frame_table));
+  int counter = 0;
   struct list_elem *e = list_begin(&frame_table);
-  for (struct list_elem *temp = list_begin(&frame_table); temp != list_end(&frame_table); 
-       temp = list_next(temp))
+  struct list_elem pointer_elem;
+  struct frame_table_entry *entry;
+  while (true)
   {
-    struct frame_table_entry *entry = list_entry(temp, struct frame_table_entry, elem);
-    if (!entry->pinned)
+    if (e == list_end(&frame_table))
     {
-      e = &entry->elem;
-      break;
+      counter = 0;
+      frame_table_index = 0;
+      e = list_begin(&frame_table);
+    }
+    else
+    {
+      if (counter >= frame_table_index)
+      {
+        entry = list_entry(e, struct frame_table_entry, elem);
+        if (entry != NULL)
+        {
+          if (entry->second_chance)
+          {
+            entry->second_chance = false;
+          }
+          else if (!entry->pinned)
+          {
+            frame_table_index = counter;
+            break;
+          }
+        }
+      }
+      counter++;
+      e = list_next(e);
     }
   }
-  struct frame_table_entry *lru_entry = list_entry(e, struct frame_table_entry,
-                                                   elem);
-  e = list_next(e);
-  while (e != list_end(&frame_table))
-  {
-    struct frame_table_entry *entry = list_entry(e, 
-                                                 struct frame_table_entry,
-                                                 elem);
-    if (!entry->pinned && entry->access_time <= lru_entry->access_time)
-    {
-      lru_entry = entry;
-    }
-    e = list_next(e);
-  }
-  
-  /*
-   * 1. Swap lru_entry into swap table.
-   * 2. set spte->isSwapped and spte->is_installed in lru_entry->owner->spage_table
-   * 3. Remove lru_entry from frame table
-   * 4. Free kpage
-   */
-  struct thread *owner = lru_entry->owner;
+  struct thread *owner = entry->owner;
   lock_release(&spage_lock);
   struct spage_table_entry *spte =
-    spage_get_entry(&owner->spage_table, lru_entry->uaddr);
+    spage_get_entry(&owner->spage_table, entry->uaddr);
   
   lock_acquire(&spage_lock);
-  // printf("evicted upage: %p kpage:%p\n", lru_entry->uaddr, lru_entry->kpage_addr);
-  swap_index swap_slot = swap_frame_to_slot(lru_entry->kpage_addr);
-  // printf("swapped page: %p to slot %d\n", lru_entry->uaddr, swap_slot);
+  swap_index swap_slot = 0;
+  // printf("evicted upage: %p kpage:%p\n", entry->uaddr, entry->kpage_addr);
+  if (strlen(spte->file_name) > 0 && page_is_mmap(spte->uaddr))
+  {
+    write_page_to_file(spte, entry->kpage_addr);
+  }
+  else
+  {
+    swap_slot = swap_frame_to_slot(entry->kpage_addr);
+    // printf("swapped page: %p to slot %d\n", entry->uaddr, swap_slot);
+  }
   if (swap_slot != SWAP_ERROR)
   {
-    pagedir_clear_page(owner->pagedir, lru_entry->uaddr);
-    palloc_free_page(lru_entry->kpage_addr);
+    pagedir_clear_page(owner->pagedir, spte->uaddr);
+    palloc_free_page(entry->kpage_addr);
     spte->is_installed = false;
     spte->is_swapped = true;
     spte->swap_slot = swap_slot;
-    list_remove(&lru_entry->elem);
-    free(lru_entry);
+    list_remove(&entry->elem);
+    free(entry);
+    // printf("freed resources\n");
     lock_release(&spage_lock);
     lock_release(&frame_table_lock);
     return palloc_get_page(PAL_USER | PAL_ZERO);
