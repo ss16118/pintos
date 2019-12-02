@@ -33,6 +33,7 @@ static struct file_mmap *get_file_mmap(mapid_t);
 static struct file_fd *get_file_elem_from_fd(int fd);
 static void remove_file_mmap_on_exit(void);
 static void munmap_write_back_to_file(struct file_mmap *);
+static bool preemptive_load(void *, unsigned);
 static int file_desc_count = 2;
 static struct list file_mappings;
 /*
@@ -546,6 +547,24 @@ int filesize(int fd)
   return 0;
 }
 
+/*
+ * Preemptively load in the pages for a buffer so that no page faults occur during
+ * a function call in filesys.
+ */
+static bool preemptive_load(void *buffer, unsigned size)
+{
+  size_t number_of_pages = (size - 1) / PGSIZE + 1;
+  for (int i = 0; i < number_of_pages; i++)
+  {
+    void *upage = pg_round_down(buffer + PGSIZE * i);
+    struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, upage);
+    if (spte != NULL && !spte->is_installed)
+    {
+      frame_add_entry(spte);
+    }
+  }
+}
+
 
 /**
  * Reads size bytes from the file open as fd into buffer. Returns the number of
@@ -564,17 +583,13 @@ int read(int fd, void *buffer, unsigned size)
   }
 
   lock_acquire(&filesys_lock);
+  preemptive_load(buffer, size);
   if (fd > STDIN_FILENO)
   {
     struct file_fd *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
       int bytes_read = file_read(fl->file, buffer, size);
-      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, buffer);
-      if (spte != NULL)
-      {
-        pagedir_set_accessed(thread_current()->pagedir, spte->uaddr, true);
-      }
       lock_release(&filesys_lock);
       return bytes_read;
     }
@@ -617,14 +632,15 @@ int write(int fd, const void *buffer, unsigned size)
   {
     exit(SYSCALL_ERROR);
   }
-
+  lock_acquire(&filesys_lock);
+  preemptive_load(buffer, size);
   if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
     return size;
   }
 
-  lock_acquire(&filesys_lock);
+  
   struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {

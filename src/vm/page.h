@@ -46,7 +46,7 @@ struct spage_table_entry
   bool writable;
   bool is_installed;
   bool is_swapped;
-
+  
   char file_name[MAX_FILENAME_LEN];
   off_t ofs;
   size_t page_read_byte;

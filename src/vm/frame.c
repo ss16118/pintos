@@ -100,16 +100,13 @@ void *frame_add_entry(struct spage_table_entry *spte)
           writable = spte->writable;
           if (file_read_at(file_to_load, kpage, page_read_bytes, spte->ofs) != (int) page_read_bytes)
           {
-            // printf("failed to load file\n");
             file_close(file_to_load);
             palloc_free_page (kpage);
             return NULL;
           }
-          // printf("successfully read from file\n");
           file_close(file_to_load);
         }
         memset (kpage + page_read_bytes, 0, page_zero_bytes);
-        // printf("memset complete\n");
       }
       // printf("upage %p\n", spte->uaddr);
       // printf("kpage %p\n", kpage);
