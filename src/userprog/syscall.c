@@ -34,7 +34,6 @@ static struct file_fd *get_file_elem_from_fd(int fd);
 static void remove_file_mmap_on_exit(void);
 static void munmap_write_back_to_file(struct file_mmap *);
 static int file_desc_count = 2;
-static struct lock filesys_lock;
 static struct list file_mappings;
 /*
  * Checks if the pointer is a valid pointer. It is implemented with
@@ -301,10 +300,12 @@ pid_t exec(const char *cmd_line)
 
   /* Set parent thread to wait for child thread to finish loading */
   thread_current()->child_waiting = child_pid;
+  lock_release(&filesys_lock);
   sema_down(&thread_current()->wait_for_child);
+  // printf("child load complete \n");
 
   /* Re-enable file system access */
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
 
   if (child_pid == TID_ERROR || child_status->child_exit_status == SYSCALL_ERROR)
   {
@@ -312,6 +313,7 @@ pid_t exec(const char *cmd_line)
   }
  
   child_status->child_exit_status = CHILD_RUNNING;
+  // printf("exec completed\n");
   return child_pid;
 }
 
@@ -741,9 +743,10 @@ static void remove_file_mmap_on_exit(void)
   } 
 }
 
+/* Checks whether the given page is an mmap */
 bool page_is_mmap(void *uaddr)
 {
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
 
   for (struct list_elem *e = list_begin(&file_mappings);
        e != list_end(&file_mappings); e = list_next(e))
@@ -751,11 +754,11 @@ bool page_is_mmap(void *uaddr)
     struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
     if (fm->uaddr == uaddr && fm->owner == thread_current())
     {
-      lock_release(&filesys_lock);
+      // lock_release(&filesys_lock);
       return true;
     }
   }
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   return false;
 }
 

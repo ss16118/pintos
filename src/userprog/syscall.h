@@ -10,6 +10,8 @@
 #define SYSCALL_ERROR -1
 #define CHILD_RUNNING -2
 
+struct lock filesys_lock;
+
 void syscall_init(void);
 void halt(void);
 void exit (int status);

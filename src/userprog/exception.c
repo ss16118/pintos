@@ -8,6 +8,9 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+
+#include "threads/synch.h"
+
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 #include "userprog/pagedir.h"
@@ -169,7 +172,9 @@ page_fault (struct intr_frame *f)
     If the virtual address is valid, allocate a new page in the current thread's
     page directory, and continue running the current thread.
   */
-  // printf("Fault addr: %p\n", fault_addr);
+  // printf("Process %d Fault addr: %p\n", thread_current()->tid, fault_addr);
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock) lock_acquire(&filesys_lock);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
   {
     void *user_page = pg_round_down(fault_addr);
@@ -211,6 +216,7 @@ page_fault (struct intr_frame *f)
     if (frame_entry != NULL)
     {
       frame_entry->pinned = pinned;
+      if (!has_lock) lock_release(&filesys_lock);
       return;
     }
     else
@@ -219,6 +225,7 @@ page_fault (struct intr_frame *f)
   else
   {
    fault:
+    if (!has_lock) lock_release(&filesys_lock);
     exit(SYSCALL_ERROR);
   }
 }

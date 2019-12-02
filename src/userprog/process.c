@@ -61,6 +61,7 @@ process_execute (const char *parameters)
 static void
 start_process (void *file_name_)
 {
+  // printf("starting %d\n", thread_current()->tid);
   char *parameters = file_name_;
   struct intr_frame if_;
   bool success;
@@ -73,6 +74,7 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
+  // printf("load completed\n");
   /* Thread will wake parent thread if all of the following conditions are true
 
     - it has successfully loaded the stack
@@ -87,6 +89,7 @@ start_process (void *file_name_)
       thread_current()->parent->child_waiting == thread_current()->tid &&
       !list_empty(&thread_current()->parent->child_waits))
   {
+    // printf("waking parent\n");
     sema_up(&thread_current()->parent->wait_for_child);
     thread_yield();
   }
@@ -101,6 +104,7 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
+  // printf("running code\n");
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -270,6 +274,7 @@ load (const char *parameters, void (**eip) (void), void **esp)
   char *file_name = strtok_r(temp_params, " ", &temp_ptr);
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {
@@ -360,6 +365,7 @@ load (const char *parameters, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+  lock_release(&filesys_lock);
   file_close (file);
   return success;
 }
