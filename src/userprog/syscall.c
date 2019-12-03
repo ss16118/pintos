@@ -239,9 +239,7 @@ void exit(int status)
   }
 
   /* Removes all the struct file_mmap owned by the current thread */
-  lock_acquire(&filesys_lock);
   remove_file_mmap_on_exit();
-  lock_release(&filesys_lock);
 
   /* Checks if parent is waiting on thread */
   enum intr_level old_level = intr_disable();
@@ -744,6 +742,7 @@ static void remove_file_mmap_on_exit(void)
 {
   if (!list_empty(&file_mappings))
   {
+    lock_acquire(&filesys_lock);
     struct list_elem *e = list_begin(&file_mappings);
     while (e != list_end(&file_mappings))
     {
@@ -756,6 +755,7 @@ static void remove_file_mmap_on_exit(void)
         free(fm);
       }
     }
+    lock_release(&filesys_lock);
   } 
 }
 
@@ -880,8 +880,8 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
     if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
     {
       void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
-      if (kpage == NULL)
-        printf("Process %d upage %\n", thread_current()->tid, curr_uaddr);
+      // if (kpage == NULL)
+        // printf("Process %d upage %\n", thread_current()->tid, curr_uaddr);
       if (kpage == NULL) exit(SYSCALL_ERROR);
 
       struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
@@ -914,7 +914,7 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 void munmap (mapid_t mapping)
 {
   int fd = mapping;
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   struct file_mmap *file_mmap = get_file_mmap(mapping);
   
   if (file_mmap == NULL)
@@ -924,5 +924,5 @@ void munmap (mapid_t mapping)
   munmap_write_back_to_file(file_mmap);
   list_remove(&file_mmap->elem);
   free(file_mmap);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
 }
