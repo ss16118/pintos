@@ -239,7 +239,9 @@ void exit(int status)
   }
 
   /* Removes all the struct file_mmap owned by the current thread */
+  lock_acquire(&filesys_lock);
   remove_file_mmap_on_exit();
+  lock_release(&filesys_lock);
 
   /* Checks if parent is waiting on thread */
   enum intr_level old_level = intr_disable();
@@ -554,13 +556,15 @@ int filesize(int fd)
 static bool preemptive_load(void *buffer, unsigned size)
 {
   size_t number_of_pages = (size - 1) / PGSIZE + 1;
-  for (int i = 0; i < number_of_pages; i++)
+  // printf("Process %d loading %d pages for the buffer\n", thread_current()->tid, number_of_pages);
+  for (int i = 0; i <= number_of_pages; i++)
   {
     void *upage = pg_round_down(buffer + PGSIZE * i);
     struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, upage);
     if (spte != NULL && !spte->is_installed)
     {
       frame_add_entry(spte);
+      // printf("%d Process % d Loaded page %p\n", i, thread_current()->tid, upage);
     }
   }
 }
@@ -583,12 +587,12 @@ int read(int fd, void *buffer, unsigned size)
   }
 
   lock_acquire(&filesys_lock);
-  preemptive_load(buffer, size);
   if (fd > STDIN_FILENO)
   {
     struct file_fd *fl = get_file_elem_from_fd(fd);
     if (fl != NULL)
     {
+      preemptive_load(buffer, size);
       int bytes_read = file_read(fl->file, buffer, size);
       lock_release(&filesys_lock);
       return bytes_read;
@@ -602,7 +606,6 @@ int read(int fd, void *buffer, unsigned size)
       memset(buffer, input_getc(), sizeof(uint8_t));
       buffer = (char *) buffer + 1;
       char_count++;
-
     }
     lock_release(&filesys_lock);
     return size;
@@ -632,19 +635,18 @@ int write(int fd, const void *buffer, unsigned size)
   {
     exit(SYSCALL_ERROR);
   }
-  lock_acquire(&filesys_lock);
-  preemptive_load(buffer, size);
+
   if (fd == STDOUT_FILENO)
   {
     putbuf((char *) buffer, size);
     return size;
   }
-
+  lock_acquire(&filesys_lock);
   
   struct file_fd *fl = get_file_elem_from_fd(fd);
   if (fl != NULL)
   {
-
+    preemptive_load(buffer, size);
     int result = file_write(fl->file, buffer, size);
     lock_release(&filesys_lock);
     return result;
@@ -735,14 +737,13 @@ static struct file_mmap *get_file_mmap(mapid_t mapping)
 }
 
 /**
- * Unmaps all the mapped files of the curren thread, and frees all
+ * Unmaps all the mapped files of the current thread, and frees all
  * the occupied resources.
  */ 
 static void remove_file_mmap_on_exit(void)
 {
   if (!list_empty(&file_mappings))
   {
-    lock_acquire(&filesys_lock);
     struct list_elem *e = list_begin(&file_mappings);
     while (e != list_end(&file_mappings))
     {
@@ -755,26 +756,21 @@ static void remove_file_mmap_on_exit(void)
         free(fm);
       }
     }
-    lock_release(&filesys_lock);
   } 
 }
 
 /* Checks whether the given page is an mmap */
 bool page_is_mmap(void *uaddr)
 {
-  // lock_acquire(&filesys_lock);
-
   for (struct list_elem *e = list_begin(&file_mappings);
        e != list_end(&file_mappings); e = list_next(e))
   {
     struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
     if (fm->uaddr == uaddr && fm->owner == thread_current())
     {
-      // lock_release(&filesys_lock);
       return true;
     }
   }
-  // lock_release(&filesys_lock);
   return false;
 }
 
@@ -847,6 +843,7 @@ mapid_t mmap(int fd , void *addr)
     // Advance
     ofs += PGSIZE;
     page_read_bytes = file_size - ofs > PGSIZE ? PGSIZE : file_size - ofs;
+    // printf("Process %d mmapped page %p\n", thread_current()->tid, addr + PGSIZE * i);
   }
 
   /* Creates the struct to save the meta data */
@@ -877,13 +874,14 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 {
   int file_size = file_mmap->file_size;
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
-
   for (int i = 0; i < number_of_pages; i++)
   {
     void *curr_uaddr = file_mmap->uaddr + i * PGSIZE;
     if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
     {
       void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
+      if (kpage == NULL)
+        printf("Process %d upage %\n", thread_current()->tid, curr_uaddr);
       if (kpage == NULL) exit(SYSCALL_ERROR);
 
       struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
@@ -891,7 +889,7 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 
       write_page_to_file(spte, kpage);
     }
-    spage_remove_entry(&thread_current()->spage_table, file_mmap->uaddr + i * PGSIZE);
+    spage_remove_entry(&thread_current()->spage_table, curr_uaddr);
   }
 }
 
@@ -916,16 +914,15 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 void munmap (mapid_t mapping)
 {
   int fd = mapping;
-
+  lock_acquire(&filesys_lock);
   struct file_mmap *file_mmap = get_file_mmap(mapping);
   
   if (file_mmap == NULL)
   {
     exit(SYSCALL_ERROR);
   }
-
   munmap_write_back_to_file(file_mmap);
-
   list_remove(&file_mmap->elem);
   free(file_mmap);
+  lock_release(&filesys_lock);
 }

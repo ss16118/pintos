@@ -130,6 +130,7 @@ bool spage_remove_entry(struct hash *spage_table, void *uaddr)
   { 
     if (hash_delete(spage_table, &spte->hash_elem) != NULL)
     {
+      printf("Process %d Removed upage %p and kpage %p from pagedir\n", thread_current()->tid, uaddr, pagedir_get_page(thread_current()->pagedir, uaddr));
       pagedir_clear_page(thread_current()->pagedir, uaddr);
       free(spte);
       lock_release(&spage_lock);

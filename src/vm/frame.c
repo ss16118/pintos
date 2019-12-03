@@ -107,10 +107,9 @@ void *frame_add_entry(struct spage_table_entry *spte)
           file_close(file_to_load);
         }
         memset (kpage + page_read_bytes, 0, page_zero_bytes);
+        // if (spte->uaddr < 0x20000000 && spte->uaddr >= 0x10000000)
+          // printf("Process %d page %p mapped to %p\n", thread_current()->tid, spte->uaddr, kpage);
       }
-      // printf("upage %p\n", spte->uaddr);
-      // printf("kpage %p\n", kpage);
-      // printf("writable %d\n", writable);
       if (!install_page(spte->uaddr, kpage, writable)) 
       {
         // printf("installation of %p failed\n", kpage);
