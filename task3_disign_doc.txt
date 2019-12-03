@@ -56,7 +56,8 @@ struct thread
     struct hash spage_table;
     ...
 };
-As mentioned above, a suppplementary page table struct is now put into  the thread struct.
+
+As mentioned above, a suppplementary page table struct is now put into the thread struct.
 
 struct frame_table_entry
 {
@@ -69,7 +70,9 @@ struct frame_table_entry
                                        via a given kpage and unmap it */
    struct list_elem elem;
 };
-
+The frame table keeps information of all the allocated frames.
+"second_chance" and "pinned" help determine what frame is to be evicted.
+"uaddr" and "owner" are used for unmapping and freeing resources.
 
 ---- ALGORITHMS ----
 
@@ -154,6 +157,19 @@ struct frame_table_entry
 >> global or static variable, `typedef', or enumeration that relates to your 
 >> file mapping table.  
 >> Identify the purpose of each in roughly 25 words.
+
+struct file_mmap
+{
+  mapid_t map_id;
+  char file_name[MAX_FILENAME_LEN];
+  struct thread *owner;
+  size_t file_size;
+  void *uaddr;
+  struct list_elem elem;
+};
+
+The data structre stores an user address and an opened file.
+When the mapped file needs to be used, the corresponding address can be found
 
 ---- ALGORITHMS ----
 
