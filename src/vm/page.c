@@ -39,7 +39,9 @@ void spage_init(struct hash *spage_table)
  */
 struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
 {
-  lock_acquire(&spage_lock);
+  bool has_lock = lock_held_by_current_thread(&spage_lock);
+  if (!has_lock)
+    lock_acquire(&spage_lock);
   /* Create a temporary entry to retrieve the version within the hash table.
    * Done this way to maintain abstraction and hiding of spage table hash table
    * implementation.
@@ -50,19 +52,17 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
   // temp_entry.hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
   struct hash_elem *spte_elem = hash_find(spage_table,
                                           &temp_entry.hash_elem);
-  // printf("returned from hash_find\n");
   if (spte_elem != NULL)
   {
     struct spage_table_entry *spte = hash_entry(spte_elem,
                                                 struct spage_table_entry,
                                                 hash_elem);
-    lock_release(&spage_lock);
-    // printf("getting entry successful\n");
+    if (!has_lock)
+      lock_release(&spage_lock);
     return spte;
   }
-  // }
-  lock_release(&spage_lock);
-  // printf("getting entry failed\n");
+  if (!has_lock)
+    lock_release(&spage_lock);
   return NULL;
 }
 
@@ -77,15 +77,19 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
                                           const char *file, off_t ofs, size_t page_read_bytes, 
                                           bool writable)
 {
+  bool has_lock = lock_held_by_current_thread(&spage_lock);
+  if (!has_lock)
+    lock_acquire(&spage_lock);
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
    * in the table within normal execution. But should not cause issues for the
    * wider execution of the process.
    */
   struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
-  // printf("setting %p, elems in table: %d\n", uaddr, hash_size(spage_table));
   if (spte != NULL)
   {
+    if (!has_lock)
+      lock_release(&spage_lock);
     return spte;
   }
   struct spage_table_entry *new_entry = malloc(sizeof(struct spage_table_entry));
@@ -102,16 +106,16 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->page_read_byte = page_read_bytes;
     new_entry->ofs = ofs;
     new_entry->writable = writable;
-    lock_acquire(&spage_lock);
 
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
+     if (!has_lock)
       lock_release(&spage_lock);
-      // printf("Spte set for %p\n", uaddr);
       return new_entry;
     }
   }
-  lock_release(&spage_lock);
+  if (!has_lock)
+    lock_release(&spage_lock);
   return NULL;
 }
 
@@ -124,13 +128,12 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
  */
 bool spage_remove_entry(struct hash *spage_table, void *uaddr)
 {
-  struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
   lock_acquire(&spage_lock);
+  struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
   if (spte != NULL)
   { 
     if (hash_delete(spage_table, &spte->hash_elem) != NULL)
     {
-      // printf("Process %d Removed upage %p and kpage %p from pagedir\n", thread_current()->tid, uaddr, pagedir_get_page(thread_current()->pagedir, uaddr));
       pagedir_clear_page(thread_current()->pagedir, uaddr);
       free(spte);
       lock_release(&spage_lock);

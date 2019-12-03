@@ -41,7 +41,9 @@ void frame_init(void)
  */
 static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
 {
-  // printf("looking up %p\n", kpage_addr);
+  bool has_lock = lock_held_by_current_thread(&frame_table_lock);
+  if (!has_lock)
+    lock_acquire(&frame_table_lock);
   for (struct list_elem *e = list_begin(&frame_table);
        e != list_end(&frame_table); e = list_next(e))
   {
@@ -49,9 +51,13 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
         list_entry(e, struct frame_table_entry, elem);
     if (entry->kpage_addr == kpage_addr)
     {
+      if (!has_lock)
+        lock_release(&frame_table_lock);
       return entry;
     }
   }
+  if (!has_lock)
+    lock_release(&frame_table_lock);
   return NULL;
 }
 
@@ -61,11 +67,13 @@ static struct frame_table_entry *frame_table_lookup(void *kpage_addr)
  * @return: the address of the frame entry if the allocation is
  * successful, otherwise, return NULL.
  */
-void *frame_add_entry(struct spage_table_entry *spte)
+struct frame_table_entry *frame_add_entry(struct spage_table_entry *spte)
 {
+  bool has_lock = lock_held_by_current_thread(&frame_table_lock);
+  if (!has_lock)
+    lock_acquire(&frame_table_lock);
   if (spte != NULL)
   {
-    // printf("frame adding entry for %p\n", spte->uaddr);
     struct frame_table_entry *new_entry =
                                        malloc(sizeof(struct frame_table_entry));
 
@@ -76,14 +84,13 @@ void *frame_add_entry(struct spage_table_entry *spte)
       while (kpage == NULL)
       {
         kpage = evict_frame();
-        // printf("received free frame: %p\n", kpage);
       }
       if (spte->is_swapped)
       {
-        // printf("upage: %p was swapped, checking swap slot %d\n", spte->uaddr, spte->swap_slot);
         // Page needs to be swapped in from swap slot
         swap_slot_to_frame(spte->swap_slot, kpage);
         swap_clear_slot(spte->swap_slot);
+        spte->is_swapped = false;
       }
       else
       {
@@ -92,7 +99,6 @@ void *frame_add_entry(struct spage_table_entry *spte)
         // If the new page allocated is used for stack growth
         if (!strlen(spte->file_name) == 0)
         {
-          // printf("loading file: %s\n", spte->file_name);
           /* Load this page. */
           struct file *file_to_load = filesys_open(spte->file_name);
           page_read_bytes = spte->page_read_byte;
@@ -102,21 +108,21 @@ void *frame_add_entry(struct spage_table_entry *spte)
           {
             file_close(file_to_load);
             palloc_free_page (kpage);
+            if (!has_lock)
+              lock_release(&frame_table_lock);
             return NULL;
           }
           file_close(file_to_load);
         }
         memset (kpage + page_read_bytes, 0, page_zero_bytes);
-        // if (spte->uaddr < 0x20000000 && spte->uaddr >= 0x10000000)
-          // printf("Process %d page %p mapped to %p\n", thread_current()->tid, spte->uaddr, kpage);
       }
       if (!install_page(spte->uaddr, kpage, writable)) 
       {
-        // printf("installation of %p failed\n", kpage);
         palloc_free_page(kpage);
+        if (!has_lock)
+          lock_release(&frame_table_lock);
         return NULL;
       }
-      // printf("installed upage %p and kpage %p\n", spte->uaddr, kpage);
 
       spte->is_installed = true;
       new_entry->pinned = false;
@@ -124,13 +130,14 @@ void *frame_add_entry(struct spage_table_entry *spte)
       new_entry->uaddr = spte->uaddr;
       new_entry->owner = thread_current();
       new_entry->second_chance = false;
-      lock_acquire(&frame_table_lock);
       list_push_back(&frame_table, &new_entry->elem);
-      lock_release(&frame_table_lock);
-      // printf("Frame table entry added %p\n", kpage);
+      if (!has_lock)
+        lock_release(&frame_table_lock);
       return new_entry;
     }
   }
+  if (!has_lock)
+    lock_release(&frame_table_lock);
   return NULL;
 }
 
@@ -142,17 +149,21 @@ void *frame_add_entry(struct spage_table_entry *spte)
  */
 bool frame_remove_entry(void *kpage_addr)
 {
-  lock_acquire(&frame_table_lock);
+  bool has_lock = lock_held_by_current_thread(&frame_table_lock);
+  if (!has_lock)
+    lock_acquire(&frame_table_lock);
   struct frame_table_entry *entry = frame_table_lookup(kpage_addr);
   if (entry != NULL)
   {
     list_remove(&entry->elem);
     palloc_free_page(entry->kpage_addr);
     free(entry);
-    lock_release(&frame_table_lock);
+    if (!has_lock)
+      lock_release(&frame_table_lock);
     return true;
   }
-  lock_release(&frame_table_lock);
+  if (!has_lock)
+    lock_release(&frame_table_lock);
   return false;
 }
 
@@ -163,6 +174,10 @@ bool frame_remove_entry(void *kpage_addr)
  */
 void frame_free_entries_from_pd(uint32_t *pd)
 {
+  bool has_lock = lock_held_by_current_thread(&frame_table_lock);
+  if (!has_lock)
+    lock_acquire(&frame_table_lock);
+
   if (pd == NULL)
     return;
 
@@ -180,17 +195,16 @@ void frame_free_entries_from_pd(uint32_t *pd)
       {
         if (*pte & PTE_P)
         {
-          // frame_remove_entry(pte_get_page(*pte));
           struct frame_table_entry *entry =
                                         frame_table_lookup(pte_get_page(*pte));       
-          lock_acquire(&frame_table_lock);
           list_remove(&entry->elem);
           free(entry);
-          lock_release(&frame_table_lock);
         }
       }
     }
   }
+  if (!has_lock)
+    lock_release(&frame_table_lock);
 }
 
 
@@ -213,15 +227,18 @@ struct frame_table_entry *frame_get_frame(void *kpage_addr)
  */
 static void *evict_frame()
 {
-  // printf("frame_table_index: %d\n", frame_table_index);
   // Frame table is current full
-  lock_acquire(&frame_table_lock);
-  lock_acquire(&spage_lock);
+  bool has_frame_lock = lock_held_by_current_thread(&frame_table_lock);
+  if (!has_frame_lock)
+    lock_acquire(&frame_table_lock);
+  bool has_spage_lock = lock_held_by_current_thread(&spage_lock);
+  if (&spage_lock)
+    lock_acquire(&spage_lock);
+
   if (list_empty(&frame_table))
   {
     PANIC("SOMETHING IS VERY WRONG");
   }
-  // printf("frames: %d\n", list_size(&frame_table));
   int counter = 0;
   struct list_elem *e = list_begin(&frame_table);
   struct list_elem pointer_elem;
@@ -257,21 +274,18 @@ static void *evict_frame()
     }
   }
   struct thread *owner = entry->owner;
-  lock_release(&spage_lock);
   struct spage_table_entry *spte =
     spage_get_entry(&owner->spage_table, entry->uaddr);
   
-  lock_acquire(&spage_lock);
   swap_index swap_slot = 0;
-  // printf("evicted upage: %p kpage:%p\n", entry->uaddr, entry->kpage_addr);
-  if (strlen(spte->file_name) > 0 && page_is_mmap(spte->uaddr))
+  if (strlen(spte->file_name) > 0 && page_is_mmap(spte->uaddr) &&
+      pagedir_is_dirty(entry->owner->pagedir, spte->uaddr))
   {
     write_page_to_file(spte, entry->kpage_addr);
   }
   else
   {
     swap_slot = swap_frame_to_slot(entry->kpage_addr);
-    // printf("swapped page: %p to slot %d\n", entry->uaddr, swap_slot);
   }
   if (swap_slot != SWAP_ERROR)
   {
@@ -282,10 +296,12 @@ static void *evict_frame()
     spte->swap_slot = swap_slot;
     list_remove(&entry->elem);
     free(entry);
-    // printf("freed resources\n");
-    lock_release(&spage_lock);
-    lock_release(&frame_table_lock);
-    return palloc_get_page(PAL_USER | PAL_ZERO);
+    void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (!has_spage_lock)
+      lock_release(&spage_lock);
+    if (!has_frame_lock)
+      lock_release(&frame_table_lock);
+    return kpage;
   }
   else
   {

@@ -21,12 +21,6 @@ void swap_init()
   swap_table = bitmap_create(swap_slot_count);
 }
 
-/* Check if the swap table has any free swap slots */
-bool swap_has_free_slots()
-{
-  return bitmap_scan(swap_table, 0, 1, false);
-}
-
 swap_index swap_get_free_slots()
 {
   return bitmap_scan_and_flip(swap_table, 0, 1, false);

@@ -62,7 +62,6 @@ pagedir_destroy (uint32_t *pd)
 static uint32_t *
 lookup_page (uint32_t *pd, const void *vaddr, bool create)
 {
-  // printf("accessed :%p\n", vaddr);
   uint32_t *pt, *pde;
 
   ASSERT (pd != NULL);
@@ -95,7 +94,6 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
     struct frame_table_entry *entry = frame_get_frame(pte_get_page(*pte));
     if (entry != NULL)
     {
-      // entry->access_time = timer_ticks();
       entry->second_chance = true;
     }
   }

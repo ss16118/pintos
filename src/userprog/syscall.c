@@ -203,13 +203,15 @@ void halt(void)
  */
 void exit(int status)
 {
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
   /* Frees all the memory occupied by the file descriptors in
      struct thread */
   if (!list_empty(&thread_current()->files))
   {
-    enum intr_level old_level = intr_disable();
     struct list_elem *e = list_begin(&thread_current()->files);
     while (e != list_end(&thread_current()->files))
     {
@@ -218,14 +220,12 @@ void exit(int status)
       file_close(fl->file);
       free(fl);
     }
-    intr_set_level(old_level);
   }
 
   /* Frees all the memory occupied by the child_bookmarks held by the current
      thread */
   if (!list_empty(&thread_current()->child_waits))
   {
-    enum intr_level old_level = intr_disable();
     struct list_elem *e = list_begin(&thread_current()->child_waits);
     while (e != list_end(&thread_current()->child_waits))
     {
@@ -235,14 +235,12 @@ void exit(int status)
       e = list_next(e);
       free(child_exit);
     }
-    intr_set_level(old_level);
   }
 
   /* Removes all the struct file_mmap owned by the current thread */
   remove_file_mmap_on_exit();
 
   /* Checks if parent is waiting on thread */
-  enum intr_level old_level = intr_disable();
   if (thread_current()->parent != NULL)
   {
     thread_current()->parent->child_exit_status = status;
@@ -263,7 +261,8 @@ void exit(int status)
       sema_up(&thread_current()->parent->wait_for_child);
     }
   }
-  intr_set_level(old_level);
+  // printf("SYSCALL EXIT COMPLETE\n");
+  lock_release(&filesys_lock);
   thread_exit();
 }
 
@@ -302,11 +301,10 @@ pid_t exec(const char *cmd_line)
   /* Set parent thread to wait for child thread to finish loading */
   thread_current()->child_waiting = child_pid;
   lock_release(&filesys_lock);
+  // printf("parent waiting for process %d\n", child_pid);
   sema_down(&thread_current()->wait_for_child);
   // printf("child load complete \n");
 
-  /* Re-enable file system access */
-  // lock_release(&filesys_lock);
 
   if (child_pid == TID_ERROR || child_status->child_exit_status == SYSCALL_ERROR)
   {
@@ -718,7 +716,9 @@ void close(int fd)
  */
 static struct file_mmap *get_file_mmap(mapid_t mapping)
 {
-  lock_acquire(&filesys_lock);
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
 
   for (struct list_elem *e = list_begin(&file_mappings);
        e != list_end(&file_mappings); e = list_next(e))
@@ -726,11 +726,13 @@ static struct file_mmap *get_file_mmap(mapid_t mapping)
     struct file_mmap *fm = list_entry(e, struct file_mmap, elem);
     if (fm->map_id == mapping)
     {
-      lock_release(&filesys_lock);
+      if (!has_lock)
+        lock_release(&filesys_lock);
       return fm;
     }
   }
-  lock_release(&filesys_lock);
+  if (!has_lock)
+    lock_release(&filesys_lock);
   return NULL;
 }
 
@@ -740,9 +742,11 @@ static struct file_mmap *get_file_mmap(mapid_t mapping)
  */ 
 static void remove_file_mmap_on_exit(void)
 {
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
   if (!list_empty(&file_mappings))
   {
-    lock_acquire(&filesys_lock);
     struct list_elem *e = list_begin(&file_mappings);
     while (e != list_end(&file_mappings))
     {
@@ -755,7 +759,8 @@ static void remove_file_mmap_on_exit(void)
         free(fm);
       }
     }
-    lock_release(&filesys_lock);
+    if (!has_lock)
+      lock_release(&filesys_lock);
   } 
 }
 
@@ -776,12 +781,17 @@ bool page_is_mmap(void *uaddr)
 
 void write_page_to_file(struct spage_table_entry *spte, void *kpage)
 {
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
   if (spte != NULL && kpage != NULL && strlen(spte->file_name) > 0)
   {
     struct file *file_to_write = filesys_open(spte->file_name);
-    file_write_at(file_to_write, kpage, PGSIZE, spte->ofs);
+    int bytes_written = file_write_at(file_to_write, kpage, spte->page_read_byte, spte->ofs);
     file_close(file_to_write);
   }
+  if (!has_lock)
+    lock_release(&filesys_lock);
 }
 
 /**
@@ -872,6 +882,9 @@ mapid_t mmap(int fd , void *addr)
  */
 static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 {
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
   int file_size = file_mmap->file_size;
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
   for (int i = 0; i < number_of_pages; i++)
@@ -880,17 +893,20 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
     if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
     {
       void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
-      // if (kpage == NULL)
-        // printf("Process %d upage %\n", thread_current()->tid, curr_uaddr);
-      if (kpage == NULL) exit(SYSCALL_ERROR);
-
       struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
-      if (spte == NULL) exit(SYSCALL_ERROR);
+      if (kpage == NULL && spte != NULL && spte->is_swapped)
+      {
+        struct frame_table_entry *fte = frame_add_entry(spte);
+        if (fte != NULL)
+          kpage = fte->kpage_addr;
+      }
 
       write_page_to_file(spte, kpage);
     }
     spage_remove_entry(&thread_current()->spage_table, curr_uaddr);
   }
+  if (!has_lock)
+    lock_release(&filesys_lock);
 }
 
 
@@ -914,7 +930,9 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
 void munmap (mapid_t mapping)
 {
   int fd = mapping;
-  // lock_acquire(&filesys_lock);
+  bool has_lock = lock_held_by_current_thread(&filesys_lock);
+  if (!has_lock)
+    lock_acquire(&filesys_lock);
   struct file_mmap *file_mmap = get_file_mmap(mapping);
   
   if (file_mmap == NULL)
@@ -924,5 +942,6 @@ void munmap (mapid_t mapping)
   munmap_write_back_to_file(file_mmap);
   list_remove(&file_mmap->elem);
   free(file_mmap);
-  // lock_release(&filesys_lock);
+  if (!has_lock)
+    lock_release(&filesys_lock);
 }

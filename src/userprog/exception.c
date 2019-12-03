@@ -172,7 +172,6 @@ page_fault (struct intr_frame *f)
     If the virtual address is valid, allocate a new page in the current thread's
     page directory, and continue running the current thread.
   */
-  // printf("Process %d Fault addr: %p\n", thread_current()->tid, fault_addr);
   bool has_lock = lock_held_by_current_thread(&filesys_lock);
   if (!has_lock) lock_acquire(&filesys_lock);
   if (!(fault_addr == NULL || fault_addr >= PHYS_BASE || fault_addr < BASE_LINE))
@@ -204,9 +203,6 @@ page_fault (struct intr_frame *f)
       bool fault_addr_in_next_page = 
           (uint32_t) (((char *) stk_ptr) - ((char *) fault_addr)) <= MAX_OFFSET;
       bool below_max_stk_size = (uint32_t) (((char *) PHYS_BASE) - ((char *) stk_ptr)) <= MAX_STACK_SIZE;
-      // printf("Fault addr: %p\nstack pointer %p\n", fault_addr, stk_ptr);
-      // printf("Fault addr in next page : %d\n", fault_addr_in_next_page);
-      // printf("Below stk max size : %d\n", below_max_stk_size);
       if (!((stk_ptr < fault_addr || fault_addr_in_next_page) && below_max_stk_size))
       {
         goto fault;

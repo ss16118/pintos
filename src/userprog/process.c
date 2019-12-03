@@ -61,7 +61,6 @@ process_execute (const char *parameters)
 static void
 start_process (void *file_name_)
 {
-  // printf("starting %d\n", thread_current()->tid);
   char *parameters = file_name_;
   struct intr_frame if_;
   bool success;
@@ -74,7 +73,6 @@ start_process (void *file_name_)
 
   /* Load the executable. */
   success = load (parameters, &if_.eip, &if_.esp);
-  // printf("load completed\n");
   /* Thread will wake parent thread if all of the following conditions are true
 
     - it has successfully loaded the stack
@@ -89,7 +87,6 @@ start_process (void *file_name_)
       thread_current()->parent->child_waiting == thread_current()->tid &&
       !list_empty(&thread_current()->parent->child_waits))
   {
-    // printf("waking parent\n");
     sema_up(&thread_current()->parent->wait_for_child);
     thread_yield();
   }
@@ -104,7 +101,6 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  // printf("running code\n");
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -446,9 +442,7 @@ load_segment (const char *file_name, struct file *file, off_t ofs, uint8_t *upag
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      // printf("Page read bytes: %d\n Page zero bytes %d\n", page_read_bytes, page_zero_bytes);
       spage_set_entry(&thread_current()->spage_table, (void *) upage, file_name, ofs, page_read_bytes, writable);
-      // printf("Created spage table entry for %p\n", kpage);
 
       /* Advance. */
       ofs += PGSIZE;

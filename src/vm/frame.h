@@ -47,7 +47,7 @@ struct frame_table_entry
 
 void frame_init(void);
 
-void *frame_add_entry(struct spage_table_entry *);
+struct frame_table_entry *frame_add_entry(struct spage_table_entry *);
 bool frame_remove_entry(void *);
 
 // Function to check if frame is present in frame table

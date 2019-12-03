@@ -20,7 +20,6 @@ typedef size_t swap_index;
 
 void swap_init(void);
 
-bool swap_has_free_slots(void);
 swap_index swap_get_free_slots(void);
 swap_index swap_get_used_slots(void);
 void swap_clear_slot(swap_index);
