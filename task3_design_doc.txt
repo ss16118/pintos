@@ -109,6 +109,19 @@ If not, the page installed and a new frame is allocated to the page.
 >> You should consider both when there are and are not free frames 
 >> available in memory.
 
+When a process needs a new frame, function "frame_add_entry" will be called
+to obtain a new frame. The first thing that happen inside "frame_add_entry"
+is to acquire the lock to the frame table. The lock is only released before
+the return statements. This avoids race condition when getting a new frame.
+
+If the there are no free frame, eviction will occur and "evict()" will be called.
+There will be no race condition in this process because "evict()" is called inside
+the "frame_add_entry" function, which is thoroughly synchronized.
+
+So no matter whether the there are free frames or not, different thread will
+get their frames without interfering will each other.
+
+
 ---- RATIONALE ----
 
 >> A5: (2 marks)
