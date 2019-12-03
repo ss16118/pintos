@@ -178,6 +178,11 @@ When the mapped file needs to be used, the corresponding address can be found
 >> existing segment and how you handle such a case. 
 >> Additionally, how might this interact with stack growth?
 
+When a new mapping is about to be created, we are given the file_descriptor and
+starting address of the memory map. Using the file_descriptor we are able to obtain
+the size of the file that is to be mapped. We can compute the number of memory pages
+needed to store the file: number_of_pages = (file_size - 1) / PGSIZE + 1
+
 ---- RATIONALE ----
 
 >> C3: (1 mark)
