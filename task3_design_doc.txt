@@ -252,6 +252,18 @@ When a frame is used, its second chance value will be set to true.
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
 
+
+When a frame is evicted in "frame_evict" function, the corresponding address
+of a user page and the thread that owns the frame is recorded.
+The address and the owner are stored as an attribute of the frame
+table entry. After retriving these information function "pagedir_clear_page"
+is called with the pagedir of the owner and the user addr. Then, the user
+page will be marked as not having a frame in the page directory.
+
+It is ensured that the frame which is swapped out cannot have multiple owners.
+That is because in our frame table, only writable frames can be swapped out, and no
+sharing is allowed for writable frames.
+
 ---- SYNCHRONIZATION ----
 
 >> B4: (2 marks)
