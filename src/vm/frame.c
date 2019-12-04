@@ -1,6 +1,7 @@
 #include "frame.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "devices/timer.h"
 #include "threads/init.h"
@@ -22,12 +23,18 @@ static struct lock frame_table_lock;
 
 static void *evict_frame(void);
 static void *reclaim_frame(struct spage_table_entry *);
-
+static struct read_only_page *add_read_only_page(struct spage_table_entry *,
+                                                 struct frame_table_entry *);
+static struct page_owner *remove_read_only_page(struct spage_table_entry *);
+static struct page_owner *get_page_owner(struct frame_table_entry *);
+static struct read_only_page *read_only_page_lookup(struct spage_table_entry *);
+static struct read_only_page *frame_lookup_read_only_page(struct frame_table_entry *);
 static int frame_table_index = 0;
 
 void frame_init(void)
 {
   list_init(&frame_table);
+  list_init(&read_only_pages);
   lock_init(&frame_table_lock);
 }
 
@@ -74,66 +81,109 @@ struct frame_table_entry *frame_add_entry(struct spage_table_entry *spte)
     lock_acquire(&frame_table_lock);
   if (spte != NULL)
   {
-    struct frame_table_entry *new_entry =
-                                       malloc(sizeof(struct frame_table_entry));
-
-    if (new_entry != NULL)
+    struct read_only_page *rpage = read_only_page_lookup(spte);
+    if (rpage == NULL || spte->writable)
     {
-      uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-      bool writable = true;
-      while (kpage == NULL)
+      struct frame_table_entry *new_entry = malloc(sizeof(struct frame_table_entry));
+      if (new_entry != NULL)
       {
-        kpage = evict_frame();
-      }
-      if (spte->is_swapped)
-      {
-        // Page needs to be swapped in from swap slot
-        swap_slot_to_frame(spte->swap_slot, kpage);
-        swap_clear_slot(spte->swap_slot);
-        spte->is_swapped = false;
-      }
-      else
-      {
-        size_t page_read_bytes = 0;
-        size_t page_zero_bytes = PGSIZE;
-        // If the new page allocated is used for stack growth
-        if (!strlen(spte->file_name) == 0)
+        uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+        bool writable = true;
+        while (kpage == NULL)
         {
-          /* Load this page. */
-          struct file *file_to_load = filesys_open(spte->file_name);
-          page_read_bytes = spte->page_read_byte;
-          page_zero_bytes = PGSIZE - page_read_bytes;
-          writable = spte->writable;
-          if (file_read_at(file_to_load, kpage, page_read_bytes, spte->ofs) != (int) page_read_bytes)
+          kpage = evict_frame();
+        }
+        if (spte->is_swapped)
+        {
+          // Page needs to be swapped in from swap slot
+          swap_slot_to_frame(spte->swap_slot, kpage);
+          swap_clear_slot(spte->swap_slot);
+          spte->is_swapped = false;
+        }
+        else
+        {
+          size_t page_read_bytes = 0;
+          size_t page_zero_bytes = PGSIZE;
+
+          // If the new page allocated is used for stack growth
+          if (strlen(spte->file_name) != 0)
           {
+            /* Load this page. */
+            struct file *file_to_load = filesys_open(spte->file_name);
+            page_read_bytes = spte->page_read_byte;
+            page_zero_bytes = PGSIZE - page_read_bytes;
+            writable = spte->writable;
+            if (file_read_at(file_to_load, kpage, page_read_bytes, spte->ofs) != (int) page_read_bytes)
+            {
+              file_close(file_to_load);
+              palloc_free_page (kpage);
+              if (!has_lock)
+                lock_release(&frame_table_lock);
+              return NULL;
+            }
             file_close(file_to_load);
-            palloc_free_page (kpage);
+          }
+          memset (kpage + page_read_bytes, 0, page_zero_bytes);
+        }
+        if (!install_page(spte->uaddr, kpage, writable)) 
+        {
+          palloc_free_page(kpage);
+          if (!has_lock)
+            lock_release(&frame_table_lock);
+          return NULL;
+        }
+        // printf("Process %d Upage %p Kpage %p is writable : %d\n", 
+               // thread_current()->tid, spte->uaddr, kpage, writable);
+        if (!writable)
+        {
+          rpage = add_read_only_page(spte, new_entry);
+          // printf("Process %d Read only page added for Upage %p Kpage %p\n", thread_current()->tid, spte->uaddr, kpage);
+          if (rpage == NULL)
+          {
             if (!has_lock)
               lock_release(&frame_table_lock);
             return NULL;
           }
-          file_close(file_to_load);
         }
-        memset (kpage + page_read_bytes, 0, page_zero_bytes);
-      }
-      if (!install_page(spte->uaddr, kpage, writable)) 
-      {
-        palloc_free_page(kpage);
+
+        spte->is_installed = true;
+        new_entry->pinned = false;
+        new_entry->kpage_addr = kpage;
+        new_entry->uaddr = spte->uaddr;
+        new_entry->second_chance = false;
+
+        list_init(&new_entry->owners);
+        struct page_owner* new_owner = malloc(sizeof(struct page_owner));
+        new_owner->owner = thread_current();
+        new_owner->uaddr = spte->uaddr;
+        list_push_back(&new_entry->owners, &new_owner->elem);
+
+        list_push_back(&frame_table, &new_entry->elem);
         if (!has_lock)
           lock_release(&frame_table_lock);
-        return NULL;
+        return new_entry;
       }
+    }
+    else
+    {
+      // printf("Adding owner %d to frame %p with upage %p\n", thread_current()->tid, rpage->entry->kpage_addr, spte->uaddr);
+      if (install_page(spte->uaddr, rpage->entry->kpage_addr, spte->writable))
+      {
+        struct page_owner *owner = malloc(sizeof(struct page_owner));
+        if (owner == NULL)
+        {
+          if (!has_lock)
+            lock_release(&frame_table_lock); 
+          return NULL;
+        }
 
-      spte->is_installed = true;
-      new_entry->pinned = false;
-      new_entry->kpage_addr = kpage;
-      new_entry->uaddr = spte->uaddr;
-      new_entry->owner = thread_current();
-      new_entry->second_chance = false;
-      list_push_back(&frame_table, &new_entry->elem);
-      if (!has_lock)
-        lock_release(&frame_table_lock);
-      return new_entry;
+        owner->owner = thread_current();
+        owner->uaddr = spte->uaddr;
+        list_push_back(&rpage->entry->owners, &owner->elem);
+        if (!has_lock)
+          lock_release(&frame_table_lock);
+        return rpage->entry;
+      }
     }
   }
   if (!has_lock)
@@ -196,9 +246,48 @@ void frame_free_entries_from_pd(uint32_t *pd)
         if (*pte & PTE_P)
         {
           struct frame_table_entry *entry =
-                                        frame_table_lookup(pte_get_page(*pte));       
-          list_remove(&entry->elem);
-          free(entry);
+                                        frame_table_lookup(pte_get_page(*pte));
+          if (entry != NULL)
+          {
+            struct page_owner *owner = get_page_owner(entry);
+            bool has_one_owner = true;
+            if (list_size(&entry->owners) > 1)
+            {
+              struct list_elem *e = list_begin(&entry->owners);
+              while (e != list_end(&entry->owners))
+              {
+                struct page_owner *temp = list_entry(e, struct page_owner, elem);
+                e = list_next(e);
+                if (temp->owner != thread_current()) has_one_owner = false;
+                if (temp->owner == thread_current() && temp != owner)
+                {
+                  pagedir_clear_page(thread_current()->pagedir, temp->uaddr);
+                  list_remove(&temp->elem);
+                  free(temp);
+                }
+              }
+              if (!has_one_owner)
+              {
+                pagedir_clear_page(thread_current()->pagedir, owner->uaddr);
+                list_remove(&owner->elem);
+                free(owner);
+              }
+            }
+            if (entry != NULL && list_size(&entry->owners) == 1 && 
+                list_begin(&entry->owners) == &owner->elem)
+            {
+              // printf("Read only page freed for frame %p\n", entry->kpage_addr);
+              list_remove(&entry->elem);
+              struct read_only_page *rpage = frame_lookup_read_only_page(entry);
+              if (rpage != NULL)
+              {
+                list_remove(&rpage->elem);
+                free(rpage);
+              }
+              free(owner);
+              free(entry);
+            }
+          }
         }
       }
     }
@@ -273,13 +362,15 @@ static void *evict_frame()
       e = list_next(e);
     }
   }
-  struct thread *owner = entry->owner;
-  struct spage_table_entry *spte =
-    spage_get_entry(&owner->spage_table, entry->uaddr);
   
   swap_index swap_slot = 0;
+  struct thread *owner = list_entry(list_begin(&entry->owners),
+                                    struct page_owner,
+                                    elem)->owner;
+  struct spage_table_entry *spte =
+      spage_get_entry(&owner->spage_table, entry->uaddr);
   if (strlen(spte->file_name) > 0 && page_is_mmap(spte->uaddr) &&
-      pagedir_is_dirty(entry->owner->pagedir, spte->uaddr))
+      pagedir_is_dirty(owner->pagedir, spte->uaddr))
   {
     write_page_to_file(spte, entry->kpage_addr);
   }
@@ -307,4 +398,104 @@ static void *evict_frame()
   {
     PANIC("INSUFFICIENT SWAP MEMORY");
   }
+}
+
+static struct read_only_page *add_read_only_page(struct spage_table_entry *spte,
+                                                 struct frame_table_entry *fte)
+{
+  struct read_only_page *rpage = malloc(sizeof(struct read_only_page));
+  if (rpage == NULL)
+    return NULL;
+
+  strlcpy(rpage->file_name, spte->file_name, MAX_FILENAME_LEN);
+  rpage->ofs = spte->ofs;
+  rpage->entry = fte;
+  list_push_back(&read_only_pages, &rpage->elem);
+  return rpage;
+}
+
+static struct page_owner *get_page_owner(struct frame_table_entry *fte)
+{
+  if (!list_empty(&fte->owners))
+  {
+    for (struct list_elem *e = list_begin(&fte->owners);
+         e != list_end(&fte->owners); e = list_next(e))
+    {
+      struct page_owner *owner = list_entry(e, struct page_owner, elem);
+      if (owner->owner == thread_current())
+      {
+        return owner;
+      }
+    }
+  }
+  return NULL;
+}
+
+/**
+ * Removes the read-only page entry from the global list given the
+ * supplemental page table entry. Returns the next owner of the page
+ * if there is one.
+ */
+static struct page_owner *remove_read_only_page(struct spage_table_entry *spte)
+{
+  struct read_only_page *rpage = read_only_page_lookup(spte);
+  if (rpage == NULL) return NULL;
+  struct frame_table_entry *fte = rpage->entry;
+  if (fte == NULL) return NULL;
+
+  struct page_owner *owner = NULL;
+  if (!list_empty(&fte->owners))
+  {
+    struct page_owner *owner = get_page_owner(fte);
+    if (owner == NULL) return NULL;
+    
+    list_remove(&owner->elem);
+    free(owner);
+
+    struct list_elem *e = list_begin(&fte->owners);
+    if (e != list_end(&fte->owners))
+    {
+      struct page_owner *next_owner = list_entry(e, struct page_owner, elem);
+      return next_owner;
+    }
+  }
+  list_remove(&rpage->elem);
+  free(rpage);
+  return NULL;
+}
+
+
+static struct read_only_page *frame_lookup_read_only_page(struct frame_table_entry *fte)
+{
+  if (!list_empty(&read_only_pages))
+  {
+    for (struct list_elem *e = list_begin(&read_only_pages);
+         e != list_end(&read_only_pages); e = list_next(e))
+    {
+      struct read_only_page *rpage = list_entry(e, struct read_only_page, elem);
+      if (rpage->entry == fte)
+      {
+        return rpage;
+      }
+    }
+  }
+  return NULL;
+}
+
+
+static struct read_only_page *read_only_page_lookup(struct spage_table_entry *spte)
+{
+  if (strlen(spte->file_name) > 0 && !list_empty(&read_only_pages))
+  {
+    for (struct list_elem *e = list_begin(&read_only_pages);
+         e != list_end(&read_only_pages); e = list_next(e))
+    {
+      struct read_only_page *rpage = list_entry(e, struct read_only_page, elem);
+      if (strcmp(rpage->file_name, spte->file_name) == 0 && rpage->ofs == spte->ofs)
+      {
+        return rpage;
+      }
+    }
+  }
+  return NULL;
 }

@@ -33,15 +33,33 @@
 ********************************************************************************
 */
 
+struct list read_only_pages;
+
 struct frame_table_entry
 {
    bool second_chance;
    bool pinned;
 
-   struct thread *owner;
+   // struct thread *owner;
+   struct list owners;
    void *kpage_addr;
    void *uaddr;                     /* We store this so we can find the upage
                                        via a given kpage and unmap it */
+   struct list_elem elem;
+};
+
+struct read_only_page
+{
+  char file_name[MAX_FILENAME_LEN];
+  off_t ofs;
+  struct frame_table_entry *entry;
+  struct list_elem elem;
+};
+
+struct page_owner
+{
+   void *uaddr;
+   struct thread *owner;
    struct list_elem elem;
 };
 

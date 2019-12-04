@@ -18,6 +18,8 @@
 #include "devices/input.h"
 #include "devices/shutdown.h"
 
+#include "userprog/exception.h"
+
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
@@ -816,7 +818,8 @@ void write_page_to_file(struct spage_table_entry *spte, void *kpage)
 mapid_t mmap(int fd , void *addr)
 {
   if (fd < 2 || filesize(fd) == 0 || addr == NULL
-      || addr == 0 || addr > PHYS_BASE || ((uint32_t) addr) % PGSIZE != 0)
+      || addr == 0 || addr > PHYS_BASE || ((uint32_t) addr) % PGSIZE != 0 
+      || (uint32_t) (PHYS_BASE - addr) < MAX_STACK_SIZE)
   {
     return SYSCALL_ERROR;
   }

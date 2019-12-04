@@ -106,7 +106,6 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     new_entry->page_read_byte = page_read_bytes;
     new_entry->ofs = ofs;
     new_entry->writable = writable;
-
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
      if (!has_lock)
