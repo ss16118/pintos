@@ -128,6 +128,19 @@ get their frames without interfering will each other.
 >> Why did you choose the data structure(s) that you did for representing the
 >> supplemental page table and frame table?
 
+We use a linked list for the frame table and hash table for suppplementary page table.
+
+For the suppplementary page table, we implement it using a hash table to obtain a faster
+speed of access. The time complexity for accessing an element is O(1) for a hash table (O(n) for linked-list)
+
+Our frame table is only used in two scenarios. When we install a new frame, 
+we just append an entry to the end of the data structure. We use the second chance
+eviction policy when we need traverse the data structure to find a frame to be evicted.
+In either cases, we are not searching for a element in the frame table, so there is no
+need to use a data struture with constant time to access a specific element.
+Therefore, we use a linked list for frame table because a linked 
+list is a very simple data structure with little overhead. 
+
                PAGING TO AND FROM DISK
                =======================
 
