@@ -80,6 +80,24 @@ The frame table keeps information of all the allocated frames.
 >> Describe your code for finding the frame (if any) or other location that 
 >> contains the data of a given page.
 
+Given a page address, our program will lookup the page in the pagedir inside
+the page directory. If it is found, we are able to obtain the frame. Otherwise,
+the page_fault function will be called. In the page_fault function, our program
+checks whether the page is in the suppplementary page table or not.
+
+If the page is not is the suppplementary page table, we know the page address is
+invalid and exit(-1) will be called. If the page exists in the suppplementary page table,
+function "frame_add_entry" is called in which a frame is allocated for the page and the
+entry is put into the frame table.
+
+A page without frame is either not installed yet or its frame has been swapped out. 
+Our "frame_add_entry" function determines which situation is is by checking the
+"is_swapped" attribute in the struct spage_table_entry.
+
+If the page is installed, the frame is swapped in using "swap_slot_to_frame".
+If not, the page installed and a new frame is allocated to the page.
+
+
 >> A3: (2 marks)
 >> How have you implemented sharing of read only pages?
 
@@ -90,6 +108,19 @@ The frame table keeps information of all the allocated frames.
 >> races avoided? 
 >> You should consider both when there are and are not free frames 
 >> available in memory.
+
+When a process needs a new frame, function "frame_add_entry" will be called
+to obtain a new frame. The first thing that happen inside "frame_add_entry"
+is to acquire the lock to the frame table. The lock is only released before
+the return statements. This avoids race condition when getting a new frame.
+
+If the there are no free frame, eviction will occur and "evict()" will be called.
+There will be no race condition in this process because "evict()" is called inside
+the "frame_add_entry" function, which is thoroughly synchronized.
+
+So no matter whether the there are free frames or not, different thread will
+get their frames without interfering will each other.
+
 
 ---- RATIONALE ----
 
@@ -177,6 +208,18 @@ When the mapped file needs to be used, the corresponding address can be found
 >> Explain how you determine whether a new file mapping overlaps with any 
 >> existing segment and how you handle such a case. 
 >> Additionally, how might this interact with stack growth?
+
+When a new mapping is about to be created, we are given the file_descriptor and
+starting address of the memory map. Using the file_descriptor we are able to obtain
+the size of the file that is to be mapped. We can compute the number of memory pages
+needed to store the file: number_of_pages = (file_size - 1) / PGSIZE + 1
+
+We use a for loop to check the address of each of the pages. if any of them is present
+in the suppplementary page table, it means the file cannot be mapped.
+
+It doesn't really interact with stack growth.
+
+TODO make up some realtion.
 
 ---- RATIONALE ----
 

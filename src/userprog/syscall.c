@@ -830,10 +830,8 @@ mapid_t mmap(int fd , void *addr)
   /* Checks if the range of pages mapped overlaps any existing set of mapped pages. */
   for (int i = 0; i < number_of_pages; i++)
   {
-    void *phys_addr =
-                pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-    if (phys_addr != NULL ||
-        spage_get_entry(&thread_current()->spage_table, addr + i * PGSIZE) != NULL)
+    pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
+    if (spage_get_entry(&thread_current()->spage_table, addr + i * PGSIZE) != NULL)
     {
       return SYSCALL_ERROR;
     }
