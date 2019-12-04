@@ -114,8 +114,8 @@ to obtain a new frame. The first thing that happen inside "frame_add_entry"
 is to acquire the lock to the frame table. The lock is only released before
 the return statements. This avoids race condition when getting a new frame.
 
-If the there are no free frame, eviction will occur and "evict()" will be called.
-There will be no race condition in this process because "evict()" is called inside
+If the there are no free frame, eviction will occur and "evict_frame()" will be called.
+There will be no race condition in this process because "evict_frame()" is called inside
 the "frame_add_entry" function, which is thoroughly synchronized.
 
 So no matter whether the there are free frames or not, different thread will
@@ -164,6 +164,18 @@ For the swap table, we uses a bitmap to find available swap slots on the disk.
 >> B2: (2 marks)
 >> When a frame is required but none is free, some frame must be evicted.
 >> Describe your code for choosing a frame to evict.
+
+When a frame needs to be evicted, function "frame_evict()" is called.
+In the "frame_evict" function, we uses second chance algorithm to choose
+the frame to evict. The list of frames is traversed from the start, if the
+second chance value of the frame is false, the page will be chosen for eviction.
+If the value is true, second chance will be set to false. If end of list is reached
+without finding a frame without finding a frame to evict, the program will traverse
+the list again from the head of the list.
+
+When a frame is used, its second chance value will be set to true.
+
+
 
 >> B3: (2 marks)
 >> When a process P obtains a frame that was previously used by a process Q,
