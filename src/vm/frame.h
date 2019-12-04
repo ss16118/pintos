@@ -33,8 +33,6 @@
 ********************************************************************************
 */
 
-struct list read_only_pages;
-
 struct frame_table_entry
 {
    bool second_chance;
@@ -48,27 +46,15 @@ struct frame_table_entry
    struct list_elem elem;
 };
 
-struct read_only_page
-{
-  char file_name[MAX_FILENAME_LEN];
-  off_t ofs;
-  struct frame_table_entry *entry;
-  struct list_elem elem;
-};
-
-struct page_owner
-{
-   void *uaddr;
-   struct thread *owner;
-   struct list_elem elem;
-};
-
 void frame_init(void);
 
+/* Allocates a new frame for use by the spage entry */
 struct frame_table_entry *frame_add_entry(struct spage_table_entry *);
-bool frame_remove_entry(void *);
 
-// Function to check if frame is present in frame table
+/* Retrieves a frame with the given physical address */
 struct frame_table_entry *frame_get_frame(void *);
+
+/* Frees resources allocated to various structs used in frame table operations 
+ */
 void frame_free_entries_from_pd(uint32_t *);
 #endif /* vm/frame.h */
