@@ -185,7 +185,6 @@ page_fault (struct intr_frame *f)
     bool writable = true;
     if (spage_entry != NULL)
     {
-      // TODO: check if the page is swapped out
       if (!spage_entry->is_installed)
       {
         spage_entry->is_installed = true;
