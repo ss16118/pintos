@@ -152,6 +152,13 @@ list is a very simple data structure with little overhead.
 >> swap table.  
 >> Identify the purpose of each in roughly 25 words.
 
+static struct bitmap *swap_table;
+
+static struct block *swap_blocks;
+
+For the swap table, we uses a bitmap to find available swap slots on the disk.
+
+
 ---- ALGORITHMS ----
 
 >> B2: (2 marks)
