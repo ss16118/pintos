@@ -404,27 +404,71 @@ Necessary conditions for deadlock:
 the next process.
 
 When we are managing the pages to and from the disk, we use only two locks for
-synchronisation, one in the frame table and one in the swap table. The swap table
-lock is only acquired in function "swap_slot_to_frame" and "swap_frame_to_slot".
-These two functions are only called inside "frame_add_entry" and "evict_frame",
-both of which starts with acquiring the frame table lock. We can see that a process
-always acquire the frame table lock before acquiring the swap table lock.
-Therefore, the fourth condition for a deadlock is never true. So deadlock will
-not happen.
+synchronisation, one in the frame table and one in the swap table. The
+swap table lock is only acquired in function "swap_slot_to_frame" and
+"swap_frame_to_slot". These two functions are only called inside
+"frame_add_entry" and "evict_frame", both of which starts with acquiring the
+frame table lock. We can see that a process always acquire the frame table lock
+before acquiring the swap table lock. Therefore, the fourth condition for a
+deadlock is never true. So deadlock will not happen.
 
 >> B5: (2 marks)
 >> A page fault in process P can cause another process Q's frame to be evicted.
 >> How do you ensure that Q cannot access or modify the page during the 
 >> eviction process?
 
+In order for process P to resolve its page fault through the allocation of a new
+frame, it must first acquire the frame_table_lock. It will hold onto the lock
+for the entire duration of the function frame_add_entry(), which includes the
+call to evict_frame(). During this period, since P currently holds the
+frame_table_lock, Q cannot make any edits to the frame table until P receives
+the frame and releases the frame_table_lock. Additionally, Q cannot make any
+changes to its supplemental page table entry either as evict_frame() requires P
+to acquire both the frame_table_lock and the spage_lock, since it will be making
+changes to Q's supplemental page table entry and clearing the page from Q's
+pagedir.
+
 >> B6: (2 marks)
 >> A page fault in process P can cause another process Q's frame to be evicted.
 >> How do you avoid a race between P evicting Q's frame and Q faulting the page
 >> back in?
 
+As mentioned in response to question B5, P evicts Q's frame as it attempts to
+obtain a free frame during a page fault, more specifically in a call to
+frame_add_entry(), the first and last actions a process undertakes within this
+function is to acquire and release the lock frame_table_lock, respectively.
+
+During this period, if Q page faults, and attempts to retrieve the page, it must
+go through frame_add_entry(), which would require it to acquire
+frame_table_lock, which it would be unable to do until P finishes acquiring the
+frame and installing it to its own page.
+
+Thus no race conditions can occur here as the frame_add_entry parts of each page
+fault must occur sequentially to each other.
+
 >> B7: (2 marks)
 >> Explain how you handle access to user pages that are not present when a
 >> system call is made.
+
+When an attempt is made to access user pages that are not present when a system
+call is made, a page fault is triggered. The page fault handler first checks if
+the faulting address has a corresponding page entry within the supplemental page
+table, this indicates that the fault is a result of an access to a page whose
+frame is being loaded lazily. If this is the case, frame_add_entry() is called
+to allocate and install a free frame to the page, after which upon returning
+from the page fault the page can be accessed as normal.
+
+If the page does not have a page entry within the supplemental page table, we
+then check if the page fault is the result of stack grow, this is indicated by
+whether the faulting address is within 1 PGSIZE of the stack pointer, and
+whether the faulting address is within the maximum stack size, defined as 8MB
+below PHYS_BASE. In this case we also call frame_add_entry() to allocate a free
+frame and continues from there same as above.
+
+If none of the above conditions are satisfied, then the faulting address was
+truly caused by an invalid access to a page and the process terminates with the
+exit status SYSCALL_ERROR.
+
 
 ---- RATIONALE ----
 
