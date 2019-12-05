@@ -331,10 +331,6 @@ void *evict_frame(void)
   bool has_frame_lock = lock_held_by_current_thread(&frame_table_lock);
   if (!has_frame_lock)
     lock_acquire(&frame_table_lock);
-  bool has_spage_lock = lock_held_by_current_thread(&spage_lock);
-  if (&spage_lock)
-    lock_acquire(&spage_lock);
-
   /* Select a frame to evict from the frame table using second chance eviction
    * policy
    */
@@ -377,6 +373,9 @@ void *evict_frame(void)
   struct thread *owner = list_entry(list_begin(&entry->owners),
                                     struct page_owner,
                                     elem)->owner;
+  bool has_spage_lock = lock_held_by_current_thread(&owner->spage_lock);
+  if (!has_spage_lock)
+    lock_acquire(&owner->spage_lock);
   struct spage_table_entry *spte =
       spage_get_entry(&owner->spage_table, entry->uaddr);
   if (strlen(spte->file_name) > 0 && page_is_mmap(spte->uaddr) &&
@@ -400,7 +399,7 @@ void *evict_frame(void)
     free(entry);
     void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (!has_spage_lock)
-      lock_release(&spage_lock);
+      lock_release(&owner->spage_lock);
     if (!has_frame_lock)
       lock_release(&frame_table_lock);
     return kpage;

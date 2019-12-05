@@ -248,7 +248,7 @@ thread_create (const char *name, int priority,
   t->parent = thread_current();
   #endif
   #ifdef VM
-  spage_init(&t->spage_table);
+  spage_init(&t->spage_table, &t->spage_lock);
   #endif
     
   intr_set_level (old_level);

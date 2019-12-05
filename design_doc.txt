@@ -33,9 +33,6 @@ Yifei   Zhang yz31218@ic.ac.uk
 >> supplemental page table and frame table. 
 >> Identify the purpose of each in roughly 25 words.
 
-struct spage_lock;  /* A lock that ensures all operations in a supplemental page
-                       table are synchronized */
-
 struct spage_table_entry
 {
   void *uaddr;      /* User virtual address corresponding to the entry */
@@ -70,14 +67,18 @@ It stores all the information relevant to a user page.
 struct thread
 {
     ...
-    struct hash spage_table; /* Supplemental page table*/
+    struct hash spage_table;  /* Supplemental page table*/
+    struct spage_lock;        /* A lock that ensures all operations in a
+                                 supplemental page table are synchronized */
     ...
 };
 
 Since each process has its own user stack, it is only reasonable for one thread
 to have its own supplemental page table in order to keep track of all of its
 user pages. Hence, struct thread contains a hash table which is the data
-structure that represents the supplemental page table.
+structure that represents the supplemental page table. The lock spage_lock is
+used to synchronise supplemental page table operations on this process's
+spage_table across multiple processes.
 
 
 struct frame_table_entry
@@ -424,7 +425,7 @@ call to evict_frame(). During this period, since P currently holds the
 frame_table_lock, Q cannot make any edits to the frame table until P receives
 the frame and releases the frame_table_lock. Additionally, Q cannot make any
 changes to its supplemental page table entry either as evict_frame() requires P
-to acquire both the frame_table_lock and the spage_lock, since it will be making
+to acquire both the frame_table_lock and Q's spage_lock, since it will be making
 changes to Q's supplemental page table entry and clearing the page from Q's
 pagedir.
 
@@ -477,6 +478,32 @@ exit status SYSCALL_ERROR.
 >> synchronisation methods. 
 >> Explain where your design falls along this continuum and why you chose to 
 >> design it this way.
+
+Our design leans further towards complexity than parallelism. We selected this
+design as our focus was that no other process could make changes to the frame
+whilst another process is allocating a frame. This is primarily due to the fact
+in the event of a frame eviction, the calling process will have to evict a frame
+which may be required by another currently running process, as such, we wanted
+to ensure that there was no way that a frame eviction would affect the execution
+of another running process.
+
+Another consideration was that if multiple processes are handling page faults
+simultaneously, a considerable amount of time would be spent context switching
+between the different processes, which would increase the total amount of time
+all of the processes spend attempting to allocate and install a free frame.
+
+The swap table is currently only accessed from within frame_add_entry(), which
+as discussed previously has already been synchronised, as such there is no
+requirement for more sophisticated synchronisation methods within the swap
+table.
+
+The supplemental page table is process specific, as such there are no problems
+when a process accesses its own supplemental page table, the only possible
+race condition is when another process is evicting a frame owned by the current
+process, this is avoided by requiring the evicting process to acquire the
+process's spage_lock before it can make any changes to another process. Apart
+from this instance, there is no other requirement for more sophisticated
+synchronisation to avoid race conditions.
 
              MEMORY MAPPED FILES
              ===================

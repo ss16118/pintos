@@ -123,6 +123,8 @@ struct thread
 #ifdef VM
     struct hash spage_table;            /* Hash table supplementary page table
                                            of pages held by current thread */
+    struct lock spage_lock;             /* Lock used for synchronisation during
+                                           evictions */
     void *saved_stk_ptr;
 #endif
 

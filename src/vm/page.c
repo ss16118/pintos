@@ -22,9 +22,9 @@ static bool spte_less_func(const struct hash_elem *a,
 
 /* Initialise thread's supplementary page table, use this function to abstract
    and hide any hash table operations from thread perspective */
-void spage_init(struct hash *spage_table)
+void spage_init(struct hash *spage_table, struct lock *spage_lock)
 {
-  lock_init(&spage_lock);
+  lock_init(spage_lock);
   hash_init(spage_table, &spte_hash_func, &spte_less_func, NULL);
 }
 
@@ -39,9 +39,9 @@ void spage_init(struct hash *spage_table)
  */
 struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
 {
-  bool has_lock = lock_held_by_current_thread(&spage_lock);
+  bool has_lock = lock_held_by_current_thread(&thread_current()->spage_lock);
   if (!has_lock)
-    lock_acquire(&spage_lock);
+    lock_acquire(&thread_current()->spage_lock);
   /* Create a temporary entry to retrieve the version within the hash table.
    * Done this way to maintain abstraction and hiding of spage table hash table
    * implementation.
@@ -58,11 +58,11 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
                                                 struct spage_table_entry,
                                                 hash_elem);
     if (!has_lock)
-      lock_release(&spage_lock);
+      lock_release(&thread_current()->spage_lock);
     return spte;
   }
   if (!has_lock)
-    lock_release(&spage_lock);
+    lock_release(&thread_current()->spage_lock);
   return NULL;
 }
 
@@ -77,9 +77,9 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
                                           const char *file, off_t ofs, size_t page_read_bytes, 
                                           bool writable)
 {
-  bool has_lock = lock_held_by_current_thread(&spage_lock);
+  bool has_lock = lock_held_by_current_thread(&thread_current()->spage_lock);
   if (!has_lock)
-    lock_acquire(&spage_lock);
+    lock_acquire(&thread_current()->spage_lock);
   /* virtual address already mapped within spage table.
    * NOTE that a function should never be called on UADDR whilst it is mapped
    * in the table within normal execution. But should not cause issues for the
@@ -89,7 +89,7 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
   if (spte != NULL)
   {
     if (!has_lock)
-      lock_release(&spage_lock);
+      lock_release(&thread_current()->spage_lock);
     return spte;
   }
   struct spage_table_entry *new_entry = malloc(sizeof(struct spage_table_entry));
@@ -109,12 +109,12 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
     if (hash_insert(spage_table, &new_entry->hash_elem) == NULL)
     {
      if (!has_lock)
-      lock_release(&spage_lock);
+      lock_release(&thread_current()->spage_lock);
       return new_entry;
     }
   }
   if (!has_lock)
-    lock_release(&spage_lock);
+    lock_release(&thread_current()->spage_lock);
   return NULL;
 }
 
@@ -127,7 +127,7 @@ struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
  */
 bool spage_remove_entry(struct hash *spage_table, void *uaddr)
 {
-  lock_acquire(&spage_lock);
+  lock_acquire(&thread_current()->spage_lock);
   struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
   if (spte != NULL)
   { 
@@ -135,11 +135,11 @@ bool spage_remove_entry(struct hash *spage_table, void *uaddr)
     {
       pagedir_clear_page(thread_current()->pagedir, uaddr);
       free(spte);
-      lock_release(&spage_lock);
+      lock_release(&thread_current()->spage_lock);
       return true;
     }
   }
-  lock_release(&spage_lock);
+  lock_release(&thread_current()->spage_lock);
   return false;
 }
 
@@ -152,7 +152,7 @@ bool spage_remove_entry(struct hash *spage_table, void *uaddr)
 bool spage_flip_is_installed(struct hash *spage_table, void *uaddr)
 {
   struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
-  lock_acquire(&spage_lock);
+  lock_acquire(&thread_current()->spage_lock);
   if (spte != NULL)
   {
     spte->is_installed = !spte->is_installed;
@@ -171,7 +171,7 @@ bool spage_flip_is_installed(struct hash *spage_table, void *uaddr)
 bool spage_flip_is_swapped(struct hash *spage_table, void *uaddr)
 {
   struct spage_table_entry *spte = spage_get_entry(spage_table, uaddr);
-  lock_acquire(&spage_lock);
+  lock_acquire(&thread_current()->spage_lock);
   if (spte != NULL)
   {
     spte->is_swapped = !spte->is_swapped;
@@ -186,9 +186,9 @@ bool spage_flip_is_swapped(struct hash *spage_table, void *uaddr)
  */
 void spage_table_destroy(struct hash *spage_table)
 {
-  lock_acquire(&spage_lock);
+  lock_acquire(&thread_current()->spage_lock);
   hash_destroy(spage_table, &spage_table_entry_destroy);
-  lock_release(&spage_lock);
+  lock_release(&thread_current()->spage_lock);
 }
 
 

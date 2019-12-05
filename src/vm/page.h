@@ -37,7 +37,6 @@ Section A.6 [Virtual Addresses], page 68, for details.
 /* Lock to facilitate synchronisation across spage table operations, non-static
    as this is used during frame table evictions.
  */
-struct lock spage_lock;
 
 struct spage_table_entry
 {
@@ -54,7 +53,7 @@ struct spage_table_entry
   struct hash_elem hash_elem;
 };
 
-void spage_init(struct hash *);
+void spage_init(struct hash *, struct lock *);
 
 struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
