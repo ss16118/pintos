@@ -263,7 +263,6 @@ void exit(int status)
       sema_up(&thread_current()->parent->wait_for_child);
     }
   }
-  // printf("SYSCALL EXIT COMPLETE\n");
   lock_release(&filesys_lock);
   thread_exit();
 }
@@ -303,10 +302,7 @@ pid_t exec(const char *cmd_line)
   /* Set parent thread to wait for child thread to finish loading */
   thread_current()->child_waiting = child_pid;
   lock_release(&filesys_lock);
-  // printf("parent waiting for process %d\n", child_pid);
   sema_down(&thread_current()->wait_for_child);
-  // printf("child load complete \n");
-
 
   if (child_pid == TID_ERROR || child_status->child_exit_status == SYSCALL_ERROR)
   {
@@ -314,7 +310,6 @@ pid_t exec(const char *cmd_line)
   }
  
   child_status->child_exit_status = CHILD_RUNNING;
-  // printf("exec completed\n");
   return child_pid;
 }
 
@@ -554,7 +549,6 @@ int filesize(int fd)
 static bool preemptive_load(void *buffer, unsigned size)
 {
   size_t number_of_pages = (size - 1) / PGSIZE + 1;
-  // printf("Process %d loading %d pages for the buffer\n", thread_current()->tid, number_of_pages);
   for (int i = 0; i <= number_of_pages; i++)
   {
     void *upage = pg_round_down(buffer + PGSIZE * i);
@@ -562,7 +556,6 @@ static bool preemptive_load(void *buffer, unsigned size)
     if (spte != NULL && !spte->is_installed)
     {
       frame_add_entry(spte);
-      // printf("%d Process % d Loaded page %p\n", i, thread_current()->tid, upage);
     }
   }
 }
@@ -830,8 +823,8 @@ mapid_t mmap(int fd , void *addr)
   /* Checks if the range of pages mapped overlaps any existing set of mapped pages. */
   for (int i = 0; i < number_of_pages; i++)
   {
-    pagedir_get_page(thread_current()->pagedir, addr + i * PGSIZE);
-    if (spage_get_entry(&thread_current()->spage_table, addr + i * PGSIZE) != NULL)
+    void *curr_addr = addr + i * PGSIZE;
+    if (spage_get_entry(&thread_current()->spage_table, curr_addr) != NULL)
     {
       return SYSCALL_ERROR;
     }
@@ -854,7 +847,6 @@ mapid_t mmap(int fd , void *addr)
     // Advance
     ofs += PGSIZE;
     page_read_bytes = file_size - ofs > PGSIZE ? PGSIZE : file_size - ofs;
-    // printf("Process %d mmapped page %p\n", thread_current()->tid, addr + PGSIZE * i);
   }
 
   /* Creates the struct to save the meta data */
