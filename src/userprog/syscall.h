@@ -40,7 +40,7 @@ struct child_bookmark
 };
 
 
-/* Struct  binds the starting virtural address of a file with a unique mapping id*/
+/* Struct binds the starting virtural address of a file with a unique mapping id*/
 struct file_mmap
 {
   mapid_t map_id;
