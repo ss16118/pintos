@@ -38,30 +38,30 @@ struct spage_lock;  /* A lock that ensures all operations in a supplemental page
 
 struct spage_table_entry
 {
-  void *uaddr;                      /* User virtual address corresponding to the entry */
+  void *uaddr;      /* User virtual address corresponding to the entry */
 
-  bool writable;                    /* Whether the page denoted by uaddr is writbale */
+  bool writable;    /* Whether the page denoted by uaddr is writbale */
   
-  bool is_installed;                /* Whether the page denoted by uaddr is installed in the
-                                       page directory */
+  bool is_installed;  /* Whether the page denoted by uaddr is installed in the
+                         page directory */
 
-  bool is_swapped;                  /* Whether the frame which uaddr mapps to is swapped out of
-                                       the main memory */
+  bool is_swapped;  /* Whether the frame which uaddr mapps to is swapped out of
+                       the main memory */
 
   char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is contained
                                        by the page denoted by uaddr */
 
-  off_t ofs;                        /* The offset in the file that contains the data to be read
-                                       into the page denoted by uaddr */
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into the page denoted by uaddr */
 
-  size_t page_read_byte;            /* The number of bytes to be read from the file */
+  size_t page_read_byte;   /* The number of bytes to be read from the file */
 
-  swap_index swap_slot;             /* The index in the swap table that contains the data
-                                       corresponding to the frame that is mapped to by
-                                       the page uaddr */
+  swap_index swap_slot;    /* The index in the swap table that contains the data
+                              corresponding to the frame that is mapped to by
+                              the page uaddr */
 
-  struct hash_elem hash_elem;       /* The hash_elem struct that is used to store this
-                                       spage_table_entry in the hash table */
+  struct hash_elem hash_elem; /* The hash_elem struct that is used to store this
+                                 spage_table_entry in the hash table */
 };
 
 Struct spage_table_entry represents a single entry in a supplemental page table.
@@ -82,22 +82,22 @@ structure that represents the supplemental page table.
 
 struct frame_table_entry
 {
-   void *kpage_addr;        /* The kernel virtual address of a frame */
+   void *kpage_addr;    /* The kernel virtual address of a frame */
    
-   void *uaddr;             /* The user virtual address which maps to the frame
-                               denoted by kpage_addr. This is stored so that when we
-                               evict the frame, we can dissociate the user page from
-                               this kernel page */
+   void *uaddr;         /* The user virtual address which maps to the frame
+                           denoted by kpage_addr. This is stored so that when we
+                           evict the frame, we can dissociate the user page from
+                           this kernel page */
 
-   bool second_chance;      /* A boolean which indicates whether this frame should
-                               be given a second chance while choosing a frame to
-                               evict */
+   bool second_chance;  /* A boolean which indicates whether this frame should
+                           be given a second chance while choosing a frame to
+                           evict */
 
-   bool pinned;             /* A boolean that indicates if the frame can be evicted */
+   bool pinned;       /* A boolean that indicates if the frame can be evicted */
 
-   struct list owners;      /* A list that stores all the user virtual pages that
-                               point to the frame denoted by kpage_addr when the
-                               frame is shared */
+   struct list owners;  /* A list that stores all the user virtual pages that
+                           point to the frame denoted by kpage_addr when the
+                           frame is shared */
    
    struct list_elem elem;   /* The list_elem struct that is used to store this
                                frame_table_entry in the frame table */
@@ -105,9 +105,9 @@ struct frame_table_entry
 
 The frame table keeps supplemetary information of each allocated frame.
 
-static struct list frame_table;       /* Struct representing the frame table
-                                         implementation, which is a global variable
-                                         in the file frame.c */
+static struct list frame_table;   /* Struct representing the frame table
+                                     implementation, which is a global variable
+                                     in the file frame.c */
 
 static struct lock frame_table_lock;  /* Lock for synchronisation across frame
                                          table operations */
@@ -120,16 +120,16 @@ struct read_only_page
   char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is saved in
                                        this read only page */
 
-  off_t ofs;                        /* The offset in the file that contains the data to be read
-                                       into this read only page */
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into this read only page */
 
-  struct frame_table_entry *fte;    /* A pointer to the frame_table_entry struct
-                                       that contains the actual data of this read
-                                       only page */
+  struct frame_table_entry *fte;  /* A pointer to the frame_table_entry struct
+                                     that contains the actual data of this read
+                                     only page */
 
-  struct list_elem elem;            /* The list_elem struct that is used when storing this
-                                       read_only_page in the list called read_only_pages
-                                       mentioned above */
+  struct list_elem elem;  /* The list_elem struct that is used when storing this
+                             read_only_page in the list called read_only_pages
+                             mentioned above */
 };
 
 Struct read_only_page stores the meta data associated with read only pages. With
@@ -140,7 +140,7 @@ struct page_owner
 {
    struct thread *owner;    /* The thread which is a owner of a particular
                                read only page*/
-   void *uaddr;             /* The user virtual address of the thread denoted by owner */
+   void *uaddr;   /* The user virtual address of the thread denoted by owner */
    
    struct list_elem elem;   /* The list_elem struct that is used when storing
                                this page_owner in the list of owners in a
@@ -164,11 +164,11 @@ If a page-frame mapping is not found within the pagedir, a page fault is
 triggered via a call to page_fault(). The page fault handler first determines if
 the faulting address is an invalid address, or if the address's corresponding
 page simply hasn't been loaded in. First, the process attempts to find if the
-faulting address has a corresponding page entry within the supplementary page
+faulting address has a corresponding page entry within the supplemental page
 table, i.e. if the faulting address is meant to have a frame, but does not at
 the moment. This is done by rounding the faulting address down to its nearest
 page address, and making a call to spage_get_entry(). If the faulting address
-has an corresponding entry within the supplementary page table, then we simply
+has an corresponding entry within the supplemental page table, then we simply
 allocate it a frame by calling frame_add_entry().
 
 Within frame_add_entry() we deal with the possibility that the given faulting
@@ -176,16 +176,16 @@ address used to have a frame but due to a shortage of frame-available memory, it
 had been swapped out at some point in the past, indicated by the is_installed
 and is_swapped booleans within the spage_entry struct. In this event we will
 have to swap the frame back into the frame table. As the required information is
-stored within the supplementary page table entry, the process has what it needs
+stored within the supplemental page table entry, the process has what it needs
 to find the swapped frame, using the frame slot index store in the spage_entry,
 it can find the swap slot which the frame was swapped to. We then allocate a
 free frame from the pool, evicting another frame if necessary, and copy the
 frame content back from the swap slot.
 
-If an entry for the faulting address is not found within the supplementary page
+If an entry for the faulting address is not found within the supplemental page
 table, we then check if the faulting address is the result of a stack growth
 operation, this is only valid if the faulting address is within a PGSIZE of the
-stack pointer. In this case, we add a new entry to the supplementary page table
+stack pointer. In this case, we add a new entry to the supplemental page table
 and allocate it a new frame before continuing with process operations.
 
 If none of the above conditions are satisfied, the faulting address is regarded
@@ -195,7 +195,7 @@ as erroneous and the process exits with exit(SYSCALL_ERROR).
 >> How have you implemented sharing of read only pages?
 
 A page is indicated as writable by the writable parameter passed to the
-load_segment function and stored within the supplementary page table entry
+load_segment function and stored within the supplemental page table entry
 created for the code segment page. This variable is accessed when the process
 causes a page fault when it attempts to access the code segment page which has
 not yet been loaded in, this behaviour is expected due to the nature of lazy
@@ -268,16 +268,16 @@ different processes.
 >> Why did you choose the data structure(s) that you did for representing the
 >> supplemental page table and frame table?
 
-We implemented the supplementary page table and the frame table using a hash
+We implemented the supplemental page table and the frame table using a hash
 table and linked-list structure respectively.
 
-For the supplementary page table, a hash table was chosen for the quicker access
-time, as each supplementary page table entry is hash inserted, the retrieval
+For the supplemental page table, a hash table was chosen for the quicker access
+time, as each supplemental page table entry is hash inserted, the retrieval
 time is effectively O(1), given an element of equivalent hash value. Whereas
 retrieving an element from a linked-list has time complexity O(n).
 
 We chose to implement the frame table using a linked-list structure for several
-reasons. When allocating, installing a new frame, we create a new supplementary
+reasons. When allocating, installing a new frame, we create a new supplemental
 page table entry, and push it to the end of the linked-list structure, this
 operation is of time complexity O(1), as the start and end of a linked-list
 structure can be accessed in constant time, and we do not need to hash the
@@ -327,12 +327,6 @@ operations.
 >> When a frame is required but none is free, some frame must be evicted.
 >> Describe your code for choosing a frame to evict.
 
-The list of frames is traversed from the start, if the
-second chance value of the frame is false, the page will be chosen for eviction.
-If the value is true, second chance will be set to false. If end of list is reached
-without finding a frame without finding a frame to evict, the program will traverse
-the list again from the head of the list.
-
 When a frame needs to be evicted, function evict_frame() is called.
 In the evict_frame() function, we use a second chance eviction policy to select 
 the frame to evict. A static variable "frame_table_index" is stored locally
@@ -369,7 +363,7 @@ available, as such evict_frame() is called.
 When a frame is evicted in the evict_frame() function, the previous owner of the
 frame is found through the 'owners' member of the frame_table_entry struct
 associated with the frame. The corresponding spage_table_entry to the frame is
-then fetched from the frame-owner's supplementary page table. The
+then fetched from the frame-owner's supplemental page table. The
 spage_table_entry 'spte' contains a member is_installed, which, as the frame is
 about to be evicted, is set to false. It is then determined if the soon-to-be
 evicted frame is a part of a mmap, mmap frames are written back to the file
@@ -400,6 +394,23 @@ no sharing is permitted for frames which may be evicted.
 >> B4: (2 marks)
 >> Explain how your synchronization design prevents deadlock.  
 >> (You may want to refer to the necessary conditions for deadlock.)
+
+Necessary conditions for deadlock:
+1. Each recourse is only available to one process
+2. A process can attempt to obtain a new resource while holding
+  a previous resource.
+3. Resources cannot be revoked from a process.
+4. Processes form a circular chain, each holds the resource required by
+the next process.
+
+When we are managing the pages to and from the disk, we use only two locks for
+synchronisation, one in the frame table and one in the swap table. The swap table
+lock is only acquired in function "swap_slot_to_frame" and "swap_frame_to_slot".
+These two functions are only called inside "frame_add_entry" and "evict_frame",
+both of which starts with acquiring the frame table lock. We can see that a process
+always acquire the frame table lock before acquiring the swap table lock.
+Therefore, the fourth condition for a deadlock is never true. So deadlock will
+not happen.
 
 >> B5: (2 marks)
 >> A page fault in process P can cause another process Q's frame to be evicted.
@@ -434,26 +445,29 @@ no sharing is permitted for frames which may be evicted.
 >> file mapping table.  
 >> Identify the purpose of each in roughly 25 words.
 
-
-static struct list file_mappings;  /* A list to store all the meta data related to
-                                      memory-mapped files. This is located in
-				      syscall.c. */
-
+static struct list file_mappings;     /* A list to store all the meta data
+                                         related to memory-mapped files. This is
+                                         located in syscall.c */
 
 struct file_mmap
 {
-  mapid_t map_id;                   /* An id that is used to identify a specific
-                                       mmapped file*/
-  char file_name[MAX_FILENAME_LEN]; /* Name of the file that is mmapped */
-  struct thread *owner;             /* A pointer to the thread struct that belongs to
-                                       the process that has mmapped the file */
-  size_t file_size;                 /* The size of the mmapped file */
-  void *uaddr;                      /* The user virtual address to where the file
-                                       has been mapped */
-  struct list_elem elem;            /* A list_elem struct so that this file_mmap
-                                       can be stored in the list file_mappings */
+  mapid_t map_id;       /* An id that is used to identify a specific mmapped
+                           file */
+
+  char file_name[MAX_FILENAME_LEN];   /* Name of the file that is mmapped */
+  struct thread *owner;               /* A pointer to the thread struct that
+                                         belongs to the process that has mmapped
+                                         the file */
+  size_t file_size;                   /* The size of the mmapped file */
+  void *uaddr;                        /* The user virtual address to where the
+                                         file has been mapped */
+  struct list_elem elem;              /* A list_elem struct so that this
+                                         file_mmap can be stored in the list
+                                         file_mappings */
 };
 
+The data structure stores an user address and an opened file.
+When the mapped file needs to be used, the corresponding address can be found
 
 ---- ALGORITHMS ----
 
@@ -473,12 +487,12 @@ will overlap with an existing segment. In this case, the mmap function will
 return -1 immediately.
 
 If the new file mapping is close to the current position of the stack pointer,
-it is likely that pages added onto the stack in the future will overlap with
-the file mapping. To prevent this, we introduce an additional condition
-that checks whether the given user virtual address is within the reach of
-the future growth of the stack. To be more specific, the address that
-the file maps to is only valid if it is at least 8MB below PHYS_BASE, which
-is the maximum size of the user stack.
+it is likely that the pages added onto the stack in the future will overlap
+with the file mapping. To prevent this, we introduce an additional condition
+that checks whether the given user virtual address is within the reach of the
+future growth of the stack. To be more specific, the address that the file maps
+to is only valid if it is at least 8MB below PHYS_BASE, which is the maximum
+size of the user stack.
 
 ---- RATIONALE ----
 
@@ -488,13 +502,12 @@ is the maximum size of the user stack.
 >> How does your code-base take advantage of this?
 
 When we load in the executable file in load_segment(), we simply add a
-supplemental page table entry for each page. When a page fault occurs,
-we use palloc_get_page() to acquire a kernel page to which the data in the
-executable will be copied onto, install the kernel page with the user page,
-and add a new frame table entry for the corresponding kernel page,
-thus achieving lazy loading. We take full advantage of the lazy-loading
-code-base for mmap in a sense that we only create the supplemental page table
-entries for the pages in virtual address space, so that when it page faults
-all the pages containing memory-mapped files will be treated essentially
-the same as the data pages from executables in frame_add_entry().
-
+supplemental page table entry for each page. When a page fault occurs, we use
+palloc_get_page() to acquire a kernel page to which the data in the executable
+will be copied onto, install the kernel page with the user page, and add a new
+frame table entry for the corresponding kernel page, thus achieving lazy
+loading. We take full advantage of the lazy-loading code-base for  mmap in a
+sense that we only create the supplemental page table entries for the pages in
+the virtual address space, so that when it page faults all the pages containing
+memory-mapped files will be treated essentially the same as the data pages from
+executables in the frame_add_entry().
