@@ -1,0 +1,405 @@
+            +--------------------------+
+            |          OS 211          |
+            |  TASK 3: VIRTUAL MEMORY  |
+            |      DESIGN DOCUMENT     |
+            +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Ruoyu   Hu    rh4618@ic.ac.uk
+Siyuan  Shen  ss16118@ic.ac.uk
+Hantang Sun   hs5718@ic.ac.uk
+Yifei   Zhang yz31218@ic.ac.uk
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, or notes for the
+>> markers, please give them here.
+
+>> Please cite any offline or online sources you consulted while preparing your 
+>> submission, other than the Pintos documentation, course text, lecture notes 
+>> and course staff.
+
+            PAGE TABLE/FRAME MANAGEMENT
+            =====================
+
+---- DATA STRUCTURES ----
+
+>> A1: (2 marks)
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
+>> global or static variable, `typedef', or enumeration that relates to your 
+>> supplemental page table and frame table. 
+>> Identify the purpose of each in roughly 25 words.
+
+struct spage_lock;  /* A lock that ensures all operations in a supplemental page
+                       table are synchronized */
+
+struct spage_table_entry
+{
+  void *uaddr;      /* User virtual address corresponding to the entry */
+
+  bool writable;    /* Whether the page denoted by uaddr is writbale */
+  
+  bool is_installed;  /* Whether the page denoted by uaddr is installed in the
+                         page directory */
+
+  bool is_swapped;  /* Whether the frame which uaddr mapps to is swapped out of
+                       the main memory */
+
+  char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is contained
+                                       by the page denoted by uaddr */
+
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into the page denoted by uaddr */
+
+  size_t page_read_byte;   /* The number of bytes to be read from the file */
+
+  swap_index swap_slot;    /* The index in the swap table that contains the data
+                              corresponding to the frame that is mapped to by
+                              the page uaddr */
+
+  struct hash_elem hash_elem; /* The hash_elem struct that is used to store this
+                                 spage_table_entry in the hash table */
+};
+
+Struct spage_table_entry represents a single entry in a supplemental page table.
+It stores all the information relevant to a user page.
+
+struct thread
+{
+    ...
+    struct hash spage_table; /* Supplemental page table*/
+    ...
+};
+
+Since each process has its own user stack, it is only reasonable for one thread
+to have its own supplemental page table in order to keep track of all of its
+user pages. Hence, struct thread contains a hash table which is the data
+structure that represents the supplemental page table.
+
+
+struct frame_table_entry
+{
+   void *kpage_addr;    /* The kernel virtual address of a frame */
+   
+   void *uaddr;         /* The user virtual address which maps to the frame
+                           denoted by kpage_addr. This is stored so that when we
+                           evict the frame, we can dissociate the user page from
+                           this kernel page */
+
+   bool second_chance;  /* A boolean which indicates whether this frame should
+                           be given a second chance while choosing a frame to
+                           evict */
+
+   bool pinned;       /* A boolean that indicates if the frame can be evicted */
+
+   struct list owners;  /* A list that stores all the user virtual pages that
+                           point to the frame denoted by kpage_addr when the
+                           frame is shared */
+   
+   struct list_elem elem;   /* The list_elem struct that is used to store this
+                               frame_table_entry in the frame table */
+};
+
+The frame table keeps supplemetary information of each allocated frame.
+
+static struct list frame_table;   /* Struct representing the frame table
+                                     implementation, which is a global variable
+                                     in the file frame.c */
+
+static struct lock frame_table_lock;  /* Lock for synchronisation across frame
+                                         table operations */
+
+static struct list read_only_pages;   /* A list that stores all pages which are
+                                         read-only */
+
+struct read_only_page
+{
+  char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is saved in
+                                       this read only page */
+
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into this read only page */
+
+  struct frame_table_entry *fte;  /* A pointer to the frame_table_entry struct
+                                     that contains the actual data of this read
+                                     only page */
+
+  struct list_elem elem;  /* The list_elem struct that is used when storing this
+                             read_only_page in the list called read_only_pages
+                             mentioned above */
+};
+
+Struct read_only_page stores the meta data associated with read only pages. With
+the help of a list of read_only_pages, we are able to locate and share read only
+pages much more efficiently.
+
+struct page_owner
+{
+   struct thread *owner;    /* The thread which is a owner of a particular
+                               read only page*/
+   void *uaddr;   /* The user virtual address of the thread denoted by owner */
+   
+   struct list_elem elem;   /* The list_elem struct that is used when storing
+                               this page_owner in the list of owners in a
+                               frame_table_entry */
+};
+
+Struct page_owner serves as a wrapper of the thread struct so that each frame
+can record which processes have their user virtual address mapped to it.
+
+---- ALGORITHMS ----
+
+>> A2: (2 marks) 
+>> Describe your code for finding the frame (if any) or other location that 
+>> contains the data of a given page.
+
+Given a page address, the process will first look for a corresponding mapping
+within its pagedir. If a mapping is found, the frame is obtained and the process
+continues execution as expected.
+
+If a page-frame mapping is not found within the pagedir, a page fault is
+triggered via a call to page_fault(). The page fault handler first determines if
+the faulting address is an invalid address, or if the address's corresponding
+page simply hasn't been loaded in. First, the process attempts to find if the
+faulting address has a corresponding page entry within the supplementary page
+table, i.e. if the faulting address is meant to have a frame, but does not at
+the moment. This is done by rounding the faulting address down to its nearest
+page address, and making a call to spage_get_entry(). If the faulting address
+has an corresponding entry within the supplementary page table, then we simply
+allocate it a frame by calling frame_add_entry().
+
+Within frame_add_entry() we deal with the possibility that the given faulting
+address used to have a frame but due to a shortage of frame-available memory, it
+had been swapped out at some point in the past, indicated by the is_installed
+and is_swapped booleans within the spage_entry struct. In this event we will
+have to swap the frame back into the frame table. As the required information is
+stored within the supplementary page table entry, the process has what it needs
+to find the swapped frame, using the frame slot index store in the spage_entry,
+it can find the swap slot which the frame was swapped to. We then allocate a
+free frame from the pool, evicting another frame if necessary, and copy the
+frame content back from the swap slot.
+
+If an entry for the faulting address is not found within the supplementary page
+table, we then check if the faulting address is the result of a stack growth
+operation, this is only valid if the faulting address is within a PGSIZE of the
+stack pointer. In this case, we add a new entry to the supplementary page table
+and allocate it a new frame before continuing with process operations.
+
+If none of the above conditions are satisfied, the faulting address is regarded
+as erroneous and the process exits with exit(SYSCALL_ERROR).
+
+>> A3: (2 marks)
+>> How have you implemented sharing of read only pages?
+
+A page is indicated as writable by the writable parameter passed to the
+load_segment function and stored within the supplementary page table entry
+created for the code segment page. This variable is accessed when the process
+causes a page fault when it attempts to access the code segment page which has
+not yet been loaded in, this behaviour is expected due to the nature of lazy
+loading of pages.
+
+Within the frame_add_entry() function, the process checks firstly if the given
+page has been loaded, by making a call to rpage_lookup(), this checks through
+the list read_only_pages, checking if any of the existing read_only_page
+structs point towards a frame that loaded in the content of the same file at the
+same offset as the current faulting page.
+
+If an entry is found within read_only_pages, a mapping is created within the
+process's pagedir between the faulting page and the frame contained within the
+read_only_page entry. A new page_owner struct is created and inserted into the
+frame's frame_table_entry's owners list. This allows for the different processes
+that are using a frame to be recorded, the process can then read from the frame
+freely, since it is read-only, it will not be edited.
+
+Otherwise, the process goes through the normal procedure flow of allocating
+(evicting if necessary) a frame for the new page, loading the code segment from
+filesys and installing the page. The process then calls rpage_add to create a
+new read_only_page entry within the list read_only_files. This process then
+proceeds as normal, when another process requires the code segment page, it will
+go through the above procedure to use the frame allocated in this instance.
+
+When a process exits, it calls frame_free_entries() to free all the memory
+allocated to structs used during the frame operations of this process. The
+function iterates through all of the frames owned by the current process through
+an existing mapping within the process's pagedir, for writable pages it removes
+and frees the frame_table_directly. For non-readable, and thus shareable pages,
+we determine if the frame is owned by any other processes, if so, we remove and
+free all instances of page_owner corresponding to the current process from the
+frame_table_entry but do not free it. The page-frame mapping is removed entirely
+if the frame is shared to avoid the frame being deallocated within
+pagedir_destroy().
+
+
+---- SYNCHRONIZATION ----
+
+>> A4: (2 marks) 
+>> When two user processes both need a new frame at the same time, how are 
+>> races avoided? 
+>> You should consider both when there are and are not free frames 
+>> available in memory.
+
+When a process needs a new frame, function "frame_add_entry" will be called
+to obtain a new frame. The first thing that happen inside "frame_add_entry"
+is to acquire the lock to the frame table. The lock is only released before
+the return statements. This avoids race condition when getting a new frame.
+
+If the there are no free frame, eviction will occur and "evict_frame()" will be called.
+There will be no race condition in this process because "evict_frame()" is called inside
+the "frame_add_entry" function, which is thoroughly synchronized.
+
+So no matter whether the there are free frames or not, different thread will
+get their frames without interfering will each other.
+
+
+---- RATIONALE ----
+
+>> A5: (2 marks)
+>> Why did you choose the data structure(s) that you did for representing the
+>> supplemental page table and frame table?
+
+We use a linked list for the frame table and hash table for suppplementary page table.
+
+For the suppplementary page table, we implement it using a hash table to obtain a faster
+speed of access. The time complexity for accessing an element is O(1) for a hash table (O(n) for linked-list)
+
+Our frame table is only used in two scenarios. When we install a new frame, 
+we just append an entry to the end of the data structure. We use the second chance
+eviction policy when we need traverse the data structure to find a frame to be evicted.
+In either cases, we are not searching for a element in the frame table, so there is no
+need to use a data struture with constant time to access a specific element.
+Therefore, we use a linked list for frame table because a linked 
+list is a very simple data structure with little overhead. 
+
+               PAGING TO AND FROM DISK
+               =======================
+
+---- DATA STRUCTURES ----
+
+>> B1: (1 mark)
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
+>> global or static variable, `typedef', or enumeration that relates to your 
+>> swap table.  
+>> Identify the purpose of each in roughly 25 words.
+
+static struct bitmap *swap_table;
+
+static struct block *swap_blocks;
+
+For the swap table, we uses a bitmap to find available swap slots on the disk.
+
+
+---- ALGORITHMS ----
+
+>> B2: (2 marks)
+>> When a frame is required but none is free, some frame must be evicted.
+>> Describe your code for choosing a frame to evict.
+
+When a frame needs to be evicted, function "frame_evict()" is called.
+In the "frame_evict" function, we uses second chance algorithm to choose
+the frame to evict. The list of frames is traversed from the start, if the
+second chance value of the frame is false, the page will be chosen for eviction.
+If the value is true, second chance will be set to false. If end of list is reached
+without finding a frame without finding a frame to evict, the program will traverse
+the list again from the head of the list.
+
+When a frame is used, its second chance value will be set to true.
+
+
+
+>> B3: (2 marks)
+>> When a process P obtains a frame that was previously used by a process Q,
+>> how do you adjust the page directory of process Q (and any other data 
+>> structures) to reflect the frame Q no longer has?
+
+
+When a frame is evicted in "frame_evict" function, the corresponding address
+of a user page and the thread that owns the frame is recorded.
+The address and the owner are stored as an attribute of the frame
+table entry. After retriving these information function "pagedir_clear_page"
+is called with the pagedir of the owner and the user addr. Then, the user
+page will be marked as not having a frame in the page directory.
+
+It is ensured that the frame which is swapped out cannot have multiple owners.
+That is because in our frame table, only writable frames can be swapped out, and no
+sharing is allowed for writable frames.
+
+---- SYNCHRONIZATION ----
+
+>> B4: (2 marks)
+>> Explain how your synchronization design prevents deadlock.  
+>> (You may want to refer to the necessary conditions for deadlock.)
+
+>> B5: (2 marks)
+>> A page fault in process P can cause another process Q's frame to be evicted.
+>> How do you ensure that Q cannot access or modify the page during the 
+>> eviction process?
+
+>> B6: (2 marks)
+>> A page fault in process P can cause another process Q's frame to be evicted.
+>> How do you avoid a race between P evicting Q's frame and Q faulting the page
+>> back in?
+
+>> B7: (2 marks)
+>> Explain how you handle access to user pages that are not present when a
+>> system call is made.
+
+---- RATIONALE ----
+
+>> B8: (2 marks)
+>> There is an obvious trade-off between parallelism and the complexity of your
+>> synchronisation methods. 
+>> Explain where your design falls along this continuum and why you chose to 
+>> design it this way.
+
+             MEMORY MAPPED FILES
+             ===================
+
+---- DATA STRUCTURES ----
+
+>> C1: (1 mark)
+>> Copy here the declaration of each new or changed `struct' or `struct' member,
+>> global or static variable, `typedef', or enumeration that relates to your 
+>> file mapping table.  
+>> Identify the purpose of each in roughly 25 words.
+
+struct file_mmap
+{
+  mapid_t map_id;
+  char file_name[MAX_FILENAME_LEN];
+  struct thread *owner;
+  size_t file_size;
+  void *uaddr;
+  struct list_elem elem;
+};
+
+The data structre stores an user address and an opened file.
+When the mapped file needs to be used, the corresponding address can be found
+
+---- ALGORITHMS ----
+
+>> C2: (3 marks)
+>> Explain how you determine whether a new file mapping overlaps with any 
+>> existing segment and how you handle such a case. 
+>> Additionally, how might this interact with stack growth?
+
+When a new mapping is about to be created, we are given the file_descriptor and
+starting address of the memory map. Using the file_descriptor we are able to obtain
+the size of the file that is to be mapped. We can compute the number of memory pages
+needed to store the file: number_of_pages = (file_size - 1) / PGSIZE + 1
+
+We use a for loop to check the address of each of the pages. if any of them is present
+in the suppplementary page table, it means the file cannot be mapped.
+
+It doesn't really interact with stack growth.
+
+TODO make up some realtion.
+
+---- RATIONALE ----
+
+>> C3: (1 mark)
+>> Mappings created with "mmap" have similar semantics to those of data 
+>> demand-paged from executables. 
+>> How does your code-base take advantage of this?
