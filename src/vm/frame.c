@@ -324,7 +324,7 @@ struct frame_table_entry *frame_get_frame(void *kpage_addr)
  * @return the newly freed frame address
  */
 static
-void *evict_frame()
+void *evict_frame(void)
 {
   ASSERT(!list_empty(&frame_table));
   // Frame table is current full
@@ -373,7 +373,7 @@ void *evict_frame()
     }
   }
   
-  swap_index swap_slot = 0;
+  swap_index swap_slot = NOT_SWAPPED;
   struct thread *owner = list_entry(list_begin(&entry->owners),
                                     struct page_owner,
                                     elem)->owner;
@@ -393,8 +393,9 @@ void *evict_frame()
     pagedir_clear_page(owner->pagedir, spte->uaddr);
     palloc_free_page(entry->kpage_addr);
     spte->is_installed = false;
-    spte->is_swapped = true;
-    spte->swap_slot = swap_slot;
+    spte->is_swapped = (swap_slot != NOT_SWAPPED);
+    if (spte->is_swapped)
+      spte->swap_slot = swap_slot;
     list_remove(&entry->elem);
     free(entry);
     void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);

@@ -297,6 +297,7 @@ hash table is unsuited for.
 >> swap table.  
 >> Identify the purpose of each in roughly 25 words.
 
+
   typedef size_t swap_index;
 
 A new type declared to refer to the index of swap slots. The pre-existing
@@ -326,16 +327,35 @@ operations.
 >> When a frame is required but none is free, some frame must be evicted.
 >> Describe your code for choosing a frame to evict.
 
-When a frame needs to be evicted, function "frame_evict()" is called.
-In the "frame_evict" function, we uses second chance algorithm to choose
-the frame to evict. The list of frames is traversed from the start, if the
+The list of frames is traversed from the start, if the
 second chance value of the frame is false, the page will be chosen for eviction.
 If the value is true, second chance will be set to false. If end of list is reached
 without finding a frame without finding a frame to evict, the program will traverse
 the list again from the head of the list.
 
-When a frame is used, its second chance value will be set to true.
+When a frame needs to be evicted, function evict_frame() is called.
+In the evict_frame() function, we use a second chance eviction policy to select 
+the frame to evict. A static variable "frame_table_index" is stored locally
+within frame.c, this variable is the pointer to the frame that will be
+considered first for eviction under the eviction policy. This relates to our
+choice to implement the frame table using a list structure, as the order in
+which elements are inserted is significant here.
 
+The process first iterates through the frame table until it finds the frame
+referred to by frame_table_index. The eviction policy then checks if the frame
+has a second chance/is_pinned, pinned frames cannot be evicted, and second
+chance frames will be given a 'second chance' before it is evicted, setting the
+frame's second_chance member to false and continuing onto the next frame. The
+eviction policy continues to iterate through the frame table until a frame is
+found where it is neither pinned or has a second chance. This frame is selected
+for eviction and the frame_table_index is set to the index of the current frame,
+as the frame that next occupies this slot is the next frame to be first
+considered for eviction.
+
+If the iteration through the frame table reaches the end of the list, we iterate
+again from the beginning of the list. If a frame is accessed, its second_chance
+member is set to true, which allows it a 'second chance' when selecting a frame
+to evict.
 
 
 >> B3: (2 marks)
@@ -343,17 +363,37 @@ When a frame is used, its second chance value will be set to true.
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
 
+Assuming process P has called frame_add_entry() and, that no free frames are
+available, as such evict_frame() is called.
 
-When a frame is evicted in "frame_evict" function, the corresponding address
-of a user page and the thread that owns the frame is recorded.
-The address and the owner are stored as an attribute of the frame
-table entry. After retriving these information function "pagedir_clear_page"
-is called with the pagedir of the owner and the user addr. Then, the user
-page will be marked as not having a frame in the page directory.
+When a frame is evicted in the evict_frame() function, the previous owner of the
+frame is found through the 'owners' member of the frame_table_entry struct
+associated with the frame. The corresponding spage_table_entry to the frame is
+then fetched from the frame-owner's supplementary page table. The
+spage_table_entry 'spte' contains a member is_installed, which, as the frame is
+about to be evicted, is set to false. It is then determined if the soon-to-be
+evicted frame is a part of a mmap, mmap frames are written back to the file
+system if dirty, else disposed. Otherwise the selected frame is swapped into a
+free swap slot, for this design we do not deal with situations where there is
+insufficient swap memory, as specified by the project specifications.
+
+Before evict_frame() returns, that is, before a frame is available to use for
+process P, the frame's association to Q is removed. The function
+pagedir_clear_page() is called to set the user page previously mapped to the
+selected frame as unmapped within process Q's pagedir. The member 'is_installed'
+within spte is set to false, and the 'is_swapped' member is set to whether the
+frame was swapped. This is so that the next time process Q attempts to access
+its data, it would page fault, but be aware of where to retrieve the frame from,
+whether a swap slot, if the frame was swapped out, or to read from the filesys.
+
+The memory previously allocated to the selected frame_table_entry is freed and
+the frame is returned to the pool. A fresh page is allocated and returned from
+evict_frame(). Process P, which is at this point inside frame_add_entry(),
+receives the free frame and can continue execution as expected.
 
 It is ensured that the frame which is swapped out cannot have multiple owners.
-That is because in our frame table, only writable frames can be swapped out, and no
-sharing is allowed for writable frames.
+That is because in our frame table, only writable frames can be swapped out, and
+no sharing is permitted for frames which may be evicted.
 
 ---- SYNCHRONIZATION ----
 

@@ -6,6 +6,8 @@
 #define VM_SWAP_H
 
 #define SWAP_ERROR -1
+#define NOT_SWAPPED -2
+
 typedef size_t swap_index;
 
 /* SWAP SLOTS
