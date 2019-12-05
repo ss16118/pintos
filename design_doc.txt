@@ -33,47 +33,122 @@ Yifei   Zhang yz31218@ic.ac.uk
 >> supplemental page table and frame table. 
 >> Identify the purpose of each in roughly 25 words.
 
+struct spage_lock;  /* A lock that ensures all operations in a supplemental page
+                       table are synchronized */
+
 struct spage_table_entry
 {
-  void *uaddr;
+  void *uaddr;      /* User virtual address corresponding to the entry */
 
-  bool writable;
-  bool is_installed;
-  bool is_swapped;
+  bool writable;    /* Whether the page denoted by uaddr is writbale */
   
-  char file_name[MAX_FILENAME_LEN];
-  off_t ofs;
-  size_t page_read_byte;
-  swap_index swap_slot;
-  struct hash_elem hash_elem;
+  bool is_installed;  /* Whether the page denoted by uaddr is installed in the
+                         page directory */
+
+  bool is_swapped;  /* Whether the frame which uaddr mapps to is swapped out of
+                       the main memory */
+
+  char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is contained
+                                       by the page denoted by uaddr */
+
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into the page denoted by uaddr */
+
+  size_t page_read_byte;   /* The number of bytes to be read from the file */
+
+  swap_index swap_slot;    /* The index in the swap table that contains the data
+                              corresponding to the frame that is mapped to by
+                              the page uaddr */
+
+  struct hash_elem hash_elem; /* The hash_elem struct that is used to store this
+                                 spage_table_entry in the hash table */
 };
 
-The suppplementary page table stores all userpages that has been allocated.
-This suppplementary page table is in every single thread.
+Struct spage_table_entry represents a single entry in a supplemental page table.
+It stores all the information relevant to a user page.
 
 struct thread
 {
     ...
-    struct hash spage_table;
+    struct hash spage_table; /* Supplemental page table*/
     ...
 };
 
-As mentioned above, a suppplementary page table struct is now put into the thread struct.
+Since each process has its own user stack, it is only reasonable for one thread
+to have its own supplemental page table in order to keep track of all of its
+user pages. Hence, struct thread contains a hash table which is the data
+structure that represents the supplemental page table.
+
 
 struct frame_table_entry
 {
-   bool second_chance;
-   bool pinned;
+   void *kpage_addr;    /* The kernel virtual address of a frame */
+   
+   void *uaddr;         /* The user virtual address which maps to the frame
+                           denoted by kpage_addr. This is stored so that when we
+                           evict the frame, we can dissociate the user page from
+                           this kernel page */
 
-   struct thread *owner;
-   void *kpage_addr;
-   void *uaddr;                     /* We store this so we can find the upage
-                                       via a given kpage and unmap it */
-   struct list_elem elem;
+   bool second_chance;  /* A boolean which indicates whether this frame should
+                           be given a second chance while choosing a frame to
+                           evict */
+
+   bool pinned;       /* A boolean that indicates if the frame can be evicted */
+
+   struct list owners;  /* A list that stores all the user virtual pages that
+                           point to the frame denoted by kpage_addr when the
+                           frame is shared */
+   
+   struct list_elem elem;   /* The list_elem struct that is used to store this
+                               frame_table_entry in the frame table */
 };
-The frame table keeps information of all the allocated frames.
-"second_chance" and "pinned" help determine what frame is to be evicted.
-"uaddr" and "owner" are used for unmapping and freeing resources.
+
+The frame table keeps supplemetary information of each allocated frame.
+
+static struct list frame_table;   /* Struct representing the frame table
+                                     implementation, which is a global variable
+                                     in the file frame.c */
+
+static struct lock frame_table_lock;  /* Lock for synchronisation across frame
+                                         table operations */
+
+static struct list read_only_pages;   /* A list that stores all pages which are
+                                         read-only */
+
+struct read_only_page
+{
+  char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is saved in
+                                       this read only page */
+
+  off_t ofs;        /* The offset in the file that contains the data to be read
+                       into this read only page */
+
+  struct frame_table_entry *fte;  /* A pointer to the frame_table_entry struct
+                                     that contains the actual data of this read
+                                     only page */
+
+  struct list_elem elem;  /* The list_elem struct that is used when storing this
+                             read_only_page in the list called read_only_pages
+                             mentioned above */
+};
+
+Struct read_only_page stores the meta data associated with read only pages. With
+the help of a list of read_only_pages, we are able to locate and share read only
+pages much more efficiently.
+
+struct page_owner
+{
+   struct thread *owner;    /* The thread which is a owner of a particular
+                               read only page*/
+   void *uaddr;   /* The user virtual address of the thread denoted by owner */
+   
+   struct list_elem elem;   /* The list_elem struct that is used when storing
+                               this page_owner in the list of owners in a
+                               frame_table_entry */
+};
+
+Struct page_owner serves as a wrapper of the thread struct so that each frame
+can record which processes have their user virtual address mapped to it.
 
 ---- ALGORITHMS ----
 
@@ -171,8 +246,8 @@ to obtain a new frame. The first thing that happen inside "frame_add_entry"
 is to acquire the lock to the frame table. The lock is only released before
 the return statements. This avoids race condition when getting a new frame.
 
-If the there are no free frame, eviction will occur and "evict()" will be called.
-There will be no race condition in this process because "evict()" is called inside
+If the there are no free frame, eviction will occur and "evict_frame()" will be called.
+There will be no race condition in this process because "evict_frame()" is called inside
 the "frame_add_entry" function, which is thoroughly synchronized.
 
 So no matter whether the there are free frames or not, different thread will
@@ -222,10 +297,34 @@ For the swap table, we uses a bitmap to find available swap slots on the disk.
 >> When a frame is required but none is free, some frame must be evicted.
 >> Describe your code for choosing a frame to evict.
 
+When a frame needs to be evicted, function "frame_evict()" is called.
+In the "frame_evict" function, we uses second chance algorithm to choose
+the frame to evict. The list of frames is traversed from the start, if the
+second chance value of the frame is false, the page will be chosen for eviction.
+If the value is true, second chance will be set to false. If end of list is reached
+without finding a frame without finding a frame to evict, the program will traverse
+the list again from the head of the list.
+
+When a frame is used, its second chance value will be set to true.
+
+
+
 >> B3: (2 marks)
 >> When a process P obtains a frame that was previously used by a process Q,
 >> how do you adjust the page directory of process Q (and any other data 
 >> structures) to reflect the frame Q no longer has?
+
+
+When a frame is evicted in "frame_evict" function, the corresponding address
+of a user page and the thread that owns the frame is recorded.
+The address and the owner are stored as an attribute of the frame
+table entry. After retriving these information function "pagedir_clear_page"
+is called with the pagedir of the owner and the user addr. Then, the user
+page will be marked as not having a frame in the page directory.
+
+It is ensured that the frame which is swapped out cannot have multiple owners.
+That is because in our frame table, only writable frames can be swapped out, and no
+sharing is allowed for writable frames.
 
 ---- SYNCHRONIZATION ----
 
