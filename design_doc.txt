@@ -241,17 +241,25 @@ pagedir_destroy().
 >> You should consider both when there are and are not free frames 
 >> available in memory.
 
-When a process needs a new frame, function "frame_add_entry" will be called
-to obtain a new frame. The first thing that happen inside "frame_add_entry"
-is to acquire the lock to the frame table. The lock is only released before
-the return statements. This avoids race condition when getting a new frame.
+When a process requires a new frame, the function frame_add_entry() is called,
+the first thing the process does within this function is to acquire the lock
+frame_table_lock, if it was not previously acquired. This ensures
+synchronisation of frame table operations across processes, as no other process
+can edit the frame table whilst the current process is acquiring a new frame.
+The process will retain frame_table_lock until it completes its operation within
+frame_add_entry().
 
-If the there are no free frame, eviction will occur and "evict_frame()" will be called.
-There will be no race condition in this process because "evict_frame()" is called inside
-the "frame_add_entry" function, which is thoroughly synchronized.
+If there are free frames in memory, the frame allocation control flow exists
+entirely within frame_add_entry(), which, as mentioned above, is synchronised by
+the acquisition of frame_table_lock at the start and releasing it only when the
+required operation is complete.
 
-So no matter whether the there are free frames or not, different thread will
-get their frames without interfering will each other.
+If there are no free frames, evict_frame() is called to remove a frame using a
+second chance eviction algorithm. This function selects and removes a frame
+table entry and frees its corresponding frame, to allow the frame to be used
+elsewhere. This is only called within frame_add_entry(), during the period where
+the function is synchronised, as such no race conditions can occur between
+different processes.
 
 
 ---- RATIONALE ----
@@ -260,18 +268,23 @@ get their frames without interfering will each other.
 >> Why did you choose the data structure(s) that you did for representing the
 >> supplemental page table and frame table?
 
-We use a linked list for the frame table and hash table for suppplementary page table.
+We implemented the supplementary page table and the frame table using a hash
+table and linked-list structure respectively.
 
-For the suppplementary page table, we implement it using a hash table to obtain a faster
-speed of access. The time complexity for accessing an element is O(1) for a hash table (O(n) for linked-list)
+For the supplementary page table, a hash table was chosen for the quicker access
+time, as each supplementary page table entry is hash inserted, the retrieval
+time is effectively O(1), given an element of equivalent hash value. Whereas
+retrieving an element from a linked-list has time complexity O(n).
 
-Our frame table is only used in two scenarios. When we install a new frame, 
-we just append an entry to the end of the data structure. We use the second chance
-eviction policy when we need traverse the data structure to find a frame to be evicted.
-In either cases, we are not searching for a element in the frame table, so there is no
-need to use a data struture with constant time to access a specific element.
-Therefore, we use a linked list for frame table because a linked 
-list is a very simple data structure with little overhead. 
+We chose to implement the frame table using a linked-list structure for several
+reasons. When allocating, installing a new frame, we create a new supplementary
+page table entry, and push it to the end of the linked-list structure, this
+operation is of time complexity O(1), as the start and end of a linked-list
+structure can be accessed in constant time, and we do not need to hash the
+element. In addition, our eviction policy is the second chance policy, which
+needs to preserve the order in which the entries were inserted, a task  that the
+hash table is unsuited for.
+
 
                PAGING TO AND FROM DISK
                =======================
@@ -284,12 +297,28 @@ list is a very simple data structure with little overhead.
 >> swap table.  
 >> Identify the purpose of each in roughly 25 words.
 
-static struct bitmap *swap_table;
+  typedef size_t swap_index;
 
-static struct block *swap_blocks;
+A new type declared to refer to the index of swap slots. The pre-existing
+block_sector_t was not appropriate in this case as swap_index does not directly
+refer to a sector.
 
-For the swap table, we uses a bitmap to find available swap slots on the disk.
 
+  static struct bitmap *swap_table;
+
+The bitmap structure is our implementation of the swap table, keeps track of
+which swap slots are free or in use.
+
+
+  static struct block *swap_blocks;
+
+The block of memory available for use as swap slots.
+
+
+  static struct lock swap_lock;
+
+Lock used for synchronisation across different processes for swap table
+operations.
 
 ---- ALGORITHMS ----
 
