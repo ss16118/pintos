@@ -74,7 +74,8 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
  * NULL if the creation fails.
  */
 struct spage_table_entry *spage_set_entry(struct hash *spage_table, void *uaddr,
-                                          const char *file, off_t ofs, size_t page_read_bytes, 
+                                          const char *file, off_t ofs,
+                                          size_t page_read_bytes, 
                                           bool writable)
 {
   bool has_lock = lock_held_by_current_thread(&thread_current()->spage_lock);

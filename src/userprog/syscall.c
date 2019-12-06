@@ -543,8 +543,8 @@ int filesize(int fd)
 }
 
 /*
- * Preemptively load in the pages for a buffer so that no page faults occur during
- * a function call in filesys.
+ * Preemptively load in the pages for a buffer so that no page faults occur
+ * during a function call in filesys.
  */
 static bool preemptive_load(void *buffer, unsigned size)
 {
@@ -552,7 +552,8 @@ static bool preemptive_load(void *buffer, unsigned size)
   for (int i = 0; i <= number_of_pages; i++)
   {
     void *upage = pg_round_down(buffer + PGSIZE * i);
-    struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, upage);
+    struct spage_table_entry *spte =
+                        spage_get_entry(&thread_current()->spage_table, upage);
     if (spte != NULL && !spte->is_installed)
     {
       frame_add_entry(spte);
@@ -782,7 +783,8 @@ void write_page_to_file(struct spage_table_entry *spte, void *kpage)
   if (spte != NULL && kpage != NULL && strlen(spte->file_name) > 0)
   {
     struct file *file_to_write = filesys_open(spte->file_name);
-    int bytes_written = file_write_at(file_to_write, kpage, spte->page_read_byte, spte->ofs);
+    int bytes_written =
+          file_write_at(file_to_write, kpage, spte->page_read_byte, spte->ofs);
     file_close(file_to_write);
   }
   if (!has_lock)
@@ -820,7 +822,8 @@ mapid_t mmap(int fd , void *addr)
   int file_size = filesize(fd);
   int number_of_pages = (file_size - 1) / PGSIZE + 1;
 
-  /* Checks if the range of pages mapped overlaps any existing set of mapped pages. */
+  /* Checks if the range of pages mapped overlaps any existing set of
+     mapped pages. */
   for (int i = 0; i < number_of_pages; i++)
   {
     void *curr_addr = addr + i * PGSIZE;
@@ -886,7 +889,8 @@ static void munmap_write_back_to_file(struct file_mmap *file_mmap)
     if (pagedir_is_dirty(thread_current()->pagedir, curr_uaddr))
     {
       void *kpage = pagedir_get_page(thread_current()->pagedir, curr_uaddr);
-      struct spage_table_entry *spte = spage_get_entry(&thread_current()->spage_table, curr_uaddr);
+      struct spage_table_entry *spte =
+                    spage_get_entry(&thread_current()->spage_table, curr_uaddr);
       if (kpage == NULL && spte != NULL && spte->is_swapped)
       {
         struct frame_table_entry *fte = frame_add_entry(spte);

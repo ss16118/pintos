@@ -57,7 +57,8 @@ void spage_init(struct hash *, struct lock *);
 
 struct spage_table_entry *spage_get_entry(struct hash *, void *);
 
-struct spage_table_entry *spage_set_entry(struct hash *, void *, const char *, off_t, size_t, bool);
+struct spage_table_entry *spage_set_entry(struct hash *, void *, const char *,
+                                          off_t, size_t, bool);
 
 bool spage_remove_entry(struct hash *, void *);
 
