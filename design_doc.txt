@@ -37,12 +37,12 @@ struct spage_table_entry
 {
   void *uaddr;      /* User virtual address corresponding to the entry */
 
-  bool writable;    /* Whether the page denoted by uaddr is writbale */
+  bool writable;    /* Whether the page denoted by uaddr is writable */
   
   bool is_installed;  /* Whether the page denoted by uaddr is installed in the
-                         page directory */
+                         current process's page directory */
 
-  bool is_swapped;  /* Whether the frame which uaddr mapps to is swapped out of
+  bool is_swapped;  /* Whether the frame which uaddr maps to is swapped out of
                        the main memory */
 
   char file_name[MAX_FILENAME_LEN]; /* Name of the file whose data is contained
@@ -96,15 +96,14 @@ struct frame_table_entry
 
    bool pinned;       /* A boolean that indicates if the frame can be evicted */
 
-   struct list owners;  /* A list that stores all the user virtual pages that
-                           point to the frame denoted by kpage_addr when the
-                           frame is shared */
+   struct list owners;  /* A list of page_owner struct that stores processes
+                           that are sharing the frame*/
    
    struct list_elem elem;   /* The list_elem struct that is used to store this
                                frame_table_entry in the frame table */
 };
 
-The frame table keeps supplemetary information of each allocated frame.
+The frame table keeps supplemental information of each allocated frame.
 
 static struct list frame_table;   /* Struct representing the frame table
                                      implementation, which is a global variable

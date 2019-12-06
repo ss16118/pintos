@@ -38,7 +38,6 @@ struct frame_table_entry
    bool second_chance;
    bool pinned;
 
-   // struct thread *owner;
    struct list owners;
    void *kpage_addr;
    void *uaddr;                     /* We store this so we can find the upage
