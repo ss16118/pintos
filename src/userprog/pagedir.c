@@ -98,7 +98,6 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
     }
   }
   return pte;
-  // return &pt[pt_no (vaddr)];
 }
 
 /* Adds a mapping in page directory PD from user virtual page

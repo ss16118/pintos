@@ -49,7 +49,6 @@ struct spage_table_entry *spage_get_entry(struct hash *spage_table, void *uaddr)
   struct spage_table_entry temp_entry;
   
   temp_entry.uaddr = uaddr;
-  // temp_entry.hash_elem = *(struct hash_elem *) malloc(sizeof(struct hash_elem *));
   struct hash_elem *spte_elem = hash_find(spage_table,
                                           &temp_entry.hash_elem);
   if (spte_elem != NULL)
